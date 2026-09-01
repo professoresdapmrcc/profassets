@@ -6,10 +6,10 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTHOBFaiSFvtbI
 
 const ALLOWED_ROLES = ["Estagiário(a)", "Conselheiro(a)", "Líder", "Vice-Líder", "Liderança"]; 
 let currentUserNick = "";
-let currentUserRole = ""; // Variável global para garantir a permissão da Liderança
+let currentUserRole = ""; 
 let todosOsBackups = {}; 
 window.allVotesRaw = []; 
-let globalLideresNicks = new Set(); // Cache para manter as tags de liderança no histórico
+let globalLideresNicks = new Set(); 
 
 function showToast(msg, type = 'success') {
     const div = document.createElement('div');
@@ -38,7 +38,10 @@ document.addEventListener('userDataReady', async (e) => {
     const userData = e.detail.userData;
     
     if (!userData) {
-        document.getElementById('access-denied-screen').classList.remove('hidden');
+        document.getElementById('access-title').innerText = "Acesso Negado";
+        document.getElementById('access-message').innerText = "Sua conta não foi identificada no fórum.";
+        const loader = document.querySelector('.loader');
+        if(loader) loader.style.display = 'none';
         return;
     }
 
@@ -46,23 +49,42 @@ document.addEventListener('userDataReady', async (e) => {
     const isAuthorized = ALLOWED_ROLES.some(role => userCargo.includes(role));
 
     if (!isAuthorized) {
-        document.getElementById('access-denied-screen').classList.remove('hidden');
+        document.getElementById('access-title').innerText = "Acesso Negado";
+        document.getElementById('access-message').innerText = "Seu cargo não possui permissão para acessar a Central.";
+        const loader = document.querySelector('.loader');
+        if(loader) loader.style.display = 'none';
         return;
     }
 
     // Configuração Inicial de Acesso Liberado
     currentUserNick = userData.name || userData.nick;
-    currentUserRole = userCargo; // Salva o cargo real do usuário
+    currentUserRole = userCargo; 
     db = firebase.firestore();
 
-    toggleDisplay('access-denied-screen', false); 
+    // Oculta a tela de carregamento (Nomes dos IDs corrigidos)
+    const accessScreen = document.getElementById('access-screen');
+    if(accessScreen) accessScreen.classList.add('hidden');
     
-    // Oculta qualquer bloqueio visual que tenha sobrado
-    const timeBlock = document.getElementById('time-block-screen');
-    if(timeBlock) timeBlock.classList.add('hidden');
+    // Atualiza a interface com os dados do usuário (na topbar)
+    const currentNickEl = document.getElementById('current-nick');
+    if(currentNickEl) currentNickEl.textContent = currentUserNick;
     
-    toggleDisplay('main-app-screen', true);
+    const currentRoleEl = document.getElementById('current-role');
+    if(currentRoleEl) currentRoleEl.textContent = currentUserRole;
+    
+    const currentAvatarEl = document.getElementById('current-avatar');
+    if(currentAvatarEl) currentAvatarEl.src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(currentUserNick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
+
+    // Inicia a aplicação na aba principal
+    switchPanel('nav-resultados');
 });
+
+// Fallback de segurança caso a página carregue depois do evento disparar
+setTimeout(() => {
+    if (window.isUserDataReady && window.currentUserData && !currentUserNick) {
+        document.dispatchEvent(new CustomEvent('userDataReady', { detail: { userData: window.currentUserData } }));
+    }
+}, 1500);
 
 // ==========================================
 // 2. NAVEGAÇÃO ENTRE ABAS
@@ -140,6 +162,7 @@ async function fetchLideresNicks() {
     const usersSnap = await db.collection('users').where('cargo', 'in', ['Líder', 'Vice-Líder', 'Liderança']).get();
     usersSnap.forEach(doc => {
         const u = doc.data();
+        if (u.status !== 'Ativo') return; // Apenas Ativos
         if (u.name) globalLideresNicks.add(u.name.toLowerCase());
         if (u.nick) globalLideresNicks.add(u.nick.toLowerCase());
     });
@@ -179,7 +202,10 @@ async function carregarResultados() {
             const cargo = u.cargo || "";
             const cargoLow = cargo.toLowerCase();
             
-            // FILTRO RIGOROSO: Rejeita membros com "Ex-" ou "Ex " na frente do cargo
+            // ----------------------------------------------------
+            // FILTRO RIGOROSO: Apenas status 'Ativo' e ignora 'Ex'
+            // ----------------------------------------------------
+            if (u.status !== 'Ativo') return; 
             if (cargoLow.includes('ex-') || cargoLow.startsWith('ex ')) return;
             
             conselheiros.push(u);
@@ -272,7 +298,7 @@ function renderizarParticipacaoConselhoComDados(votos, conselheiros, targetId, l
         </div>`;
     });
 
-    trackerDiv.innerHTML = html || '<div class="col-span-full text-center text-slate-500 text-xs py-4">Nenhum conselheiro registrado.</div>';
+    trackerDiv.innerHTML = html || '<div class="col-span-full text-center text-slate-500 text-xs py-4">Nenhum conselheiro ativo registrado.</div>';
 }
 
 function renderizarGradePropostas(listaProps, todosVotos, lideresNicks, gridId) {
@@ -361,7 +387,7 @@ function renderizarGradePropostas(listaProps, todosVotos, lideresNicks, gridId) 
         let btnForcar = '';
         if (isUserLideranca) {
             const backupStr = gridId === 'historico-grid' ? `'${document.getElementById('hist-backup-select').value}'` : 'null';
-            btnForcar = `<button onclick="abrirModalForcarVoto(${p.ordem || p.Ordem}, ${backupStr})" title="Forçar Veredito da Liderança" class="text-[10px] bg-fuchsia-900/50 text-fuchsia-400 px-2 py-1 rounded border border-fuchsia-500 hover:bg-fuchsia-500 hover:text-white transition shadow"><i class="fas fa-gavel"></i></button>`;
+            btnForcar = `<button onclick="abrirModalForcarVoto(${p.ordem || p.Ordem}, ${backupStr})" title="Forçar Veredito da Liderança" class="ml-2 text-[10px] bg-fuchsia-900/50 text-fuchsia-400 px-2 py-1 rounded border border-fuchsia-500 hover:bg-fuchsia-500 hover:text-white transition shadow"><i class="fas fa-gavel"></i></button>`;
         }
 
         html += `
@@ -375,7 +401,7 @@ function renderizarGradePropostas(listaProps, todosVotos, lideresNicks, gridId) 
                         <p class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 truncate">Por ${p.autor || p.Autor}</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center">
                     ${badgeHtml}
                     ${btnForcar}
                 </div>
@@ -561,6 +587,7 @@ window.encerrarCicloEArquivar = async () => {
         const lideresNicks = new Set();
         usersSnap.forEach(doc => {
             const u = doc.data();
+            if (u.status !== 'Ativo') return; // Apenas ativos
             if (u.name) lideresNicks.add(u.name.toLowerCase());
             if (u.nick) lideresNicks.add(u.nick.toLowerCase());
         });
