@@ -21,11 +21,38 @@
   const accessDoc = () => state.db.collection('nexus_config').doc('Propostas').collection('configuracoes').doc('acessos');
   const backups = () => state.db.collection('nexus_config').doc('backup_respostas').collection('historico');
 
-  function forumNick(){
-    const data=window._userdata||{};
-    const nick=clean(data.username);
-    const logged=Number(data.session_logged_in)===1&&Number(data.user_id)>0;
-    return logged&&!['ANONYMOUS','ANONIMO','CONVIDADO'].includes(nick.toUpperCase())?nick:'';
+  function validForumNick(value){
+    const nick=clean(value),blocked=['ANONYMOUS','ANÔNIMO','ANONIMO','CONVIDADO','GUEST'];
+    return nick&&!blocked.includes(nick.toLocaleUpperCase('pt-BR'))?nick:'';
+  }
+  function decodeForumNick(value){
+    const unescaped=clean(value)
+      .replace(/\\x([0-9a-f]{2})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
+      .replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
+      .replace(/\\(['"\\])/g,'$1');
+    const decoder=document.createElement('textarea');decoder.innerHTML=unescaped;
+    return validForumNick(decoder.value);
+  }
+  async function forumNick(){
+    const data=window._userdata||{},direct=validForumNick(data.username);
+    const explicitlyGuest=Number(data.session_logged_in)===0||Number(data.user_id)===-1;
+    if(direct&&!explicitlyGuest)return direct;
+
+    try{
+      const response=await fetch('/forum',{credentials:'same-origin',cache:'no-store'});
+      if(!response.ok)throw Error(`HTTP ${response.status}`);
+      const html=await response.text();
+      const patterns=[
+        /_userdata\s*\[\s*['"]username['"]\s*\]\s*=\s*['"]([^'"]+)['"]/i,
+        /_userdata\.username\s*=\s*['"]([^'"]+)['"]/i,
+        /["']username["']\s*:\s*["']([^"']+)["']/i
+      ];
+      for(const pattern of patterns){const match=html.match(pattern),nick=match?decodeForumNick(match[1]):'';if(nick)return nick;}
+      throw Error('Usuário não localizado no HTML do fórum.');
+    }catch(error){
+      console.error('Falha ao identificar usuário do fórum:',error);
+      return'';
+    }
   }
   function roleAllowed(role){const cargo=clean(role);return ROLES.some(item=>cargo===item||cargo.includes(item));}
   function nickAllowed(nick){return state.access.some(item=>low(item)===low(nick));}
@@ -50,7 +77,7 @@
     if(!state.auth.currentUser)await state.auth.signInAnonymously();
   }
   async function loadIdentity(){
-    state.nick=forumNick();if(!state.nick){deny('Acesso negado','Você precisa estar conectado ao fórum para continuar.');return false;}
+    state.nick=await forumNick();if(!state.nick){deny('Acesso negado','Não foi possível identificar sua sessão do fórum. Recarregue a página e tente novamente.');return false;}
     const [byName,byNick,access]=await Promise.all([state.db.collection('users').where('name','==',state.nick).limit(1).get(),state.db.collection('users').where('nick','==',state.nick).limit(1).get(),accessDoc().get()]);
     const doc=!byName.empty?byName.docs[0]:!byNick.empty?byNick.docs[0]:null;state.profile=doc?{id:doc.id,...doc.data()}:null;state.access=access.exists&&Array.isArray(access.data().nicknames)?access.data().nicknames:[];
     if(!roleAllowed(state.profile?.cargo)&&!nickAllowed(state.nick)){deny('Acesso não autorizado','Seu cargo ou nickname não possui permissão para acessar esta Central.');return false;}
