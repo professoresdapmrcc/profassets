@@ -5,13 +5,6 @@
   const FIREBASE_CONFIG = Object.freeze({apiKey:'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',authDomain:'nexusprof.firebaseapp.com',projectId:'nexusprof',storageBucket:'nexusprof.appspot.com',messagingSenderId:'268861178598',appId:'1:268861178598:web:9686b81bb003f9514fb127',measurementId:'G-MY150DZMTM'});
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTHOBFaiSFvtbIhfEwU_14F53LDhOV2H_pw6qj6dy9EmS4LkHUZhrImG_2GWgjup9p/exec';
   const ROLES = ['Estagiário(a)','Conselheiro(a)','Líder','Vice-Líder','Liderança'];
-  const SIMULATION = Object.freeze({
-      operator:'Sr.Gabriel.',
-      firstMember:'Sr.Gabriel.',
-      secondMember:'Pegas',
-      cycleId:'ciclo_simulado_03',
-      topicId:'32246'
-  });
   
   const state = {db:null, auth:null, nick:'', profile:null, access:[], cycle:null, pending:null, proposals:[], votes:[], members:[], council:[], licenses:new Set(), backups:new Map(), search:'', busy:false, unsubs:[]};
   
@@ -726,122 +719,39 @@
   function themeVision(){ const applyTheme=(v,s=false)=>{ document.documentElement.dataset.theme=v; $('theme-button').innerHTML=`<i class="ti ${v==='dark'?'ti-sun':'ti-moon'}"></i>`; document.querySelector('meta[name=theme-color]').content = v==='dark'?'#0f0512':'#821f88'; if(s) localStorage.setItem('PROPOSTAS_THEME',v); }; applyTheme(localStorage.getItem('PROPOSTAS_THEME')==='light'?'light':'dark'); $('theme-button').onclick = () => applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true); const applyVision=(sc,c,s=false)=>{ document.documentElement.dataset.scale=sc; document.documentElement.dataset.contrast=c?'high':'standard'; document.querySelectorAll('[data-scale]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scale===sc))); $('contrast-state').textContent=c?'Ativado':'Desativado'; if(s) localStorage.setItem('PROPOSTAS_VISION',JSON.stringify({scale:sc,contrast:c})); }; let pref={}; try{ pref=JSON.parse(localStorage.getItem('PROPOSTAS_VISION')||'{}'); }catch(_){} applyVision(pref.scale||'normal',pref.contrast===true); $('vision-button').onclick=()=>{ $('vision-panel').hidden=!$('vision-panel').hidden; }; document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>applyVision(b.dataset.scale,document.documentElement.dataset.contrast==='high',true)); $('contrast-button').onclick=()=>applyVision(document.documentElement.dataset.scale,document.documentElement.dataset.contrast!=='high',true); $('vision-reset').onclick=()=>applyVision('normal',false,true); }
   function bind(){ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); $('sidebar-overlay').onclick=()=>sidebar(false); $('open-launch').onclick=()=>$('launch-dialog').showModal(); document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); $('launch-form').onsubmit=saveManual; $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; $('close-cycle').onclick=closeCycle; $('resume-cycle').onclick=resume; $('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.', 'success')).catch(()=>toast('Falha ao atualizar.', 'error')); $('backup-select').onchange=e=>renderBackup(e.target.value); $('restore-backup').onclick=restore; $('access-form').onsubmit=addAccess; document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); }
   
-  function simulationTopicBBCode(member){
-      return `[font=Poppins][size=18][center][color=#560c7e][b]ADVERTÊNCIA INTERNA (TESTE DO SISTEMA)[/b][/color][/center][/size]\n\n[justify][b]Cargo e nick do(a) advertido(a):[/b] ${member.cargo} ${member.nick}\n[b]Motivo(s):[/b] Não avaliou às propostas em tempo hábil.\n[b]Data:[/b] ${postingDate()}\n[b]Permissão:[/b] Conselho da Assistência\n[/justify][/font]`;
-  }
-
-  function simulationPrivateMessageBBCode(member,attachment){
-      return `[font=Poppins]<div style="border:1.5rem solid #821F88;border-radius:8px;font-family:Poppins;">[table][tr][td][center][img]https://i.imgur.com/hU7bn8R.gif[/img][/center]\n\n[table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][center][img]https://i.imgur.com/QL68H2C.png[/img][/center][size=20][font=Poppins][color=white][b]TESTE — CARTA DE ADVERTÊNCIA INTERNA[/b][/color][/font][/size][/td][/tr][/table]\n<div style="padding:1.5%;border:1px solid #bdbdbd;border-radius:8px;">[justify]Saudações, [b]${member.nick}[/b].\n\nEsta é uma mensagem de [b]teste do simulador da Central de Propostas[/b].\n\n[b]Motivo do teste:[/b] validar a gravação na Assistência, a postagem no tópico e o envio de Mensagem Privada.\n\n[color=#821F88][b]COMENTÁRIOS:[/b][/color] No cenário simulado, o membro avaliou somente uma das duas propostas.\n\n[color=#821F88][b]ANEXOS:[/b][/color] ${attachment}.\n[/justify]</div>[/td][/tr][/table]</div>[/font]\n[font=Poppins][center]Atentamente,\n[img]https://i.imgur.com/1kZvQHs.png[/img][/center][/font]`;
-  }
-
-  function prepareSimulationData(){
-      state.nick=SIMULATION.operator;
-      state.profile={cargo:'Liderança',status:'Ativo'};
-      state.cycle={id:SIMULATION.cycleId,status:'simulacao',inicioIso:new Date().toISOString()};
-      state.proposals=[
-          {id:'101',ordem:101,ordemId:'101',autor:'Sistema',tipo:'Sugestão',titulo:'Proposta Teste 1',conteudo:'Esta proposta recebeu avaliações.',cicloId:SIMULATION.cycleId,criadoEm:new Date().toISOString()},
-          {id:'102',ordem:102,ordemId:'102',autor:'Sistema',tipo:'Projeto',titulo:'Proposta Teste 2 (não avaliada)',conteudo:'Esta proposta foi deixada sem avaliação para testar as advertências.',cicloId:SIMULATION.cycleId,criadoEm:new Date().toISOString()}
-      ];
-      state.votes=[
-          {id:'teste_101_1',Nick:SIMULATION.firstMember,Ordem:101,Veredito:'Aprovada',Comentario:'Voto simulado'},
-          {id:'teste_101_2',Nick:SIMULATION.secondMember,Ordem:101,Veredito:'Aprovada',Comentario:'Voto simulado'}
-      ];
-      state.members=[
-          {id:'sim_1',name:SIMULATION.firstMember,nick:SIMULATION.firstMember,cargo:'Vice-Líder',status:'Ativo'},
-          {id:'sim_2',name:SIMULATION.secondMember,nick:SIMULATION.secondMember,cargo:'Vice-Líder',status:'Ativo'}
-      ];
-      state.council=state.members.slice();
-      state.licenses=new Set();
-  }
-
-  function installSimulationOverrides(){
-      window.removeActive=async(id,order)=>{
-          const target=Number(order||id);
-          if(!await ask(`Excluir proposta nº ${target}?`,'Apenas os dados locais da simulação serão removidos.','Excluir'))return;
-          state.proposals=state.proposals.filter(proposal=>orderOf(proposal)!==target);
-          state.votes=state.votes.filter(vote=>voteOrder(vote)!==target);
-          renderProposals();renderCouncil();toast('Proposta simulada removida.','success');
-      };
-      window.salvarVotoForcado=()=>{
-          const order=Number($('forcar-ordem').value),verdict=$('forcar-veredito').value,comment=clean($('forcar-comentario').value);
-          if(!comment){toast('O comentário é obrigatório.','error');return;}
-          state.votes=state.votes.filter(vote=>!(voteOrder(vote)===order&&low(vote.Nick||vote.nick)===low(state.nick)));
-          state.votes.push({id:`teste_${order}_${Date.now()}`,Nick:state.nick,Ordem:order,Veredito:verdict,Comentario:comment});
-          $('force-vote-dialog').close();renderProposals();renderCouncil();toast('Voto alterado somente na simulação.','success');
-      };
-      $('launch-form').onsubmit=event=>{
-          event.preventDefault();
-          const order=Number($('form-number').value);
-          state.proposals.push({id:String(order),ordem:order,ordemId:String(order),autor:clean($('form-author').value),tipo:$('form-type').value,titulo:clean($('form-title').value),conteudo:clean($('form-content').value),cicloId:SIMULATION.cycleId,criadoEm:new Date().toISOString()});
-          event.target.reset();$('launch-dialog').close();renderProposals();renderCouncil();toast('Proposta adicionada somente na simulação.','success');
-      };
-      $('refresh-button').onclick=()=>{renderProposals();renderCouncil();toast('Dados simulados atualizados.','success');};
-      $('close-cycle').onclick=runCompleteSimulation;
-      document.querySelectorAll('[data-view="historico"],[data-view="configuracoes"]').forEach(button=>button.hidden=true);
-  }
-
-  async function runCompleteSimulation(){
-      if(state.busy)return;
-      const confirmed=await ask('Iniciar disparos reais do teste?',`O teste gravará a Assistência, publicará no tópico ${SIMULATION.topicId} e enviará MPs reais para ${SIMULATION.firstMember} e ${SIMULATION.secondMember}.`,'Iniciar teste',false);
-      if(!confirmed)return;
-      const targets=missingCouncilAssessments(state.proposals,state.votes);
-      if(!targets.length){toast('Todos avaliaram as propostas ou estão de licença. Nenhum disparo necessário.','info');return;}
-      const attachment=await requestWarningAttachment(targets);
-      if(!attachment){toast('Teste cancelado: o link do print é obrigatório.','warning');return;}
-
-      state.busy=true;busy($('close-cycle'),true,'Executando teste…');
-      const cycleRef=cycles().doc(SIMULATION.cycleId);
-      try{
-          await cycleRef.set({id:SIMULATION.cycleId,status:'simulacao',advertenciaAnexo:attachment,advertenciasAlvos:targets,simuladoPor:state.nick,simuladoEm:ts()},{merge:true});
-          const snapshot=await cycleRef.get(),data=snapshot.data()||{};
-          const assistanceSent=new Set(Array.isArray(data.advertenciasAssistenciaEnviada)?data.advertenciasAssistenciaEnviada.map(low):[]);
-          const topicSent=new Set(Array.isArray(data.advertenciasTopicoEnviado)?data.advertenciasTopicoEnviado.map(low):[]);
-          const pmSent=new Set(Array.isArray(data.advertenciasMpEnviada)?data.advertenciasMpEnviada.map(low):[]);
-
-          for(const member of targets){
-              if(!assistanceSent.has(low(member.nick))){
-                  toast(`Gravando ${member.nick} no Firebase Assistência…`,'info');
-                  await sendWarningToAssistance(member,SIMULATION.cycleId,attachment);
-                  await cycleRef.set({advertenciasAssistenciaEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              }
-              if(!topicSent.has(low(member.nick))){
-                  toast(`Postando o teste de ${member.nick} no tópico…`,'info');
-                  await forumSubmit('/post',{t:SIMULATION.topicId,message:simulationTopicBBCode(member),mode:'reply',post:'Enviar'});
-                  await cycleRef.set({advertenciasTopicoEnviado:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              }
-              if(!pmSent.has(low(member.nick))){
-                  toast(`Enviando a MP de teste para ${member.nick}…`,'info');
-                  await forumSubmit('/privmsg',{folder:'inbox',mode:'post',post:'1','username[]':member.nick,subject:'[PROF] TESTE DE MENSAGEM DO SISTEMA',message:simulationPrivateMessageBBCode(member,attachment)});
-                  await cycleRef.set({advertenciasMpEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              }
-          }
-          await cycleRef.set({status:'simulacao_concluida',simulacaoConcluidaEm:ts(),simulacaoConcluidaPor:state.nick},{merge:true});
-          $('cycle-label').textContent='Simulação concluída';
-          toast('Teste concluído: Firebase, tópico e MPs processados.','success');
-      }catch(error){
-          console.error('Falha na simulação:',error);
-          toast(`${error.message||'Falha na simulação.'}${error.code?` (${error.code})`:''}`,'error');
-      }finally{
-          state.busy=false;busy($('close-cycle'),false);
-      }
-  }
-
   async function init(){
+      const watchdog = setTimeout(() => {
+          deny('A inicialização demorou demais', 'Recarregue a página. Se continuar, verifique o Authentication e as regras do Firebase.');
+      }, 60000);
       try{
-          bind();themeVision();
-          accessStatus('Conectando o simulador','Criando a sessão anônima do Firebase…');
+          bind(); themeVision();
+          accessStatus('Identificando sua sessão', 'Consultando o usuário conectado no fórum…');
+          state.nick = await forumNick();
+          if(!state.nick){
+              deny('Acesso negado', 'Não foi possível identificar sua sessão do fórum. Recarregue a página após confirmar que está conectado.');
+              return;
+          }
+          accessStatus('Conectando ao Firebase', `Sessão de ${state.nick} localizada. Preparando o banco de dados…`);
           await firebaseSession();
-          prepareSimulationData();
-          installSimulationOverrides();
-          $('current-nick').textContent=state.nick;
-          $('current-role').textContent='Liderança · Simulação';
-          $('current-avatar').src=`https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(state.nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
-          $('cycle-label').textContent=`Modo de teste · ${SIMULATION.cycleId}`;
-          renderProposals();renderCouncil();navigate('propostas');allow();
-          toast('Simulador preparado. O fechamento executará disparos reais.','warning');
-      }catch(error){
-          console.error('Falha ao iniciar o simulador:',error);
-          deny('Falha ao iniciar o simulador',`${error.message||'Não foi possível iniciar.'}${error.code?` (${error.code})`:''}`);
+          if(!await loadIdentity()) return;
+          accessStatus('Preparando o ciclo', 'Verificando o período atual das propostas…');
+          await withTimeout(ensureCycle(), 15000, 'O Firestore não respondeu ao preparar o ciclo atual.');
+          accessStatus('Carregando a Central', 'Buscando propostas, membros e licenças…');
+          await withTimeout(
+              Promise.all([loadPeople(), migrateLegacy()]),
+              20000,
+              'O Firestore não respondeu ao carregar os dados da Central.'
+          );
+          startLive();
+          renderAccess();
+          navigate(['propostas','historico','configuracoes'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'propostas');
+          allow();
+      }catch(e){
+          console.error('Falha ao iniciar a Central:', e);
+          const code = e && e.code ? ` (${e.code})` : '';
+          deny('Falha ao iniciar', `${e.message||'Não foi possível conectar ao sistema.'}${code}`);
+      }finally{
+          clearTimeout(watchdog);
       }
   }
   
