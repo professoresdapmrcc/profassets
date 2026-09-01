@@ -5,6 +5,7 @@
   const FIREBASE_CONFIG = Object.freeze({apiKey:'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',authDomain:'nexusprof.firebaseapp.com',projectId:'nexusprof',storageBucket:'nexusprof.appspot.com',messagingSenderId:'268861178598',appId:'1:268861178598:web:9686b81bb003f9514fb127',measurementId:'G-MY150DZMTM'});
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTHOBFaiSFvtbIhfEwU_14F53LDhOV2H_pw6qj6dy9EmS4LkHUZhrImG_2GWgjup9p/exec';
   const ROLES = ['Estagiário(a)','Conselheiro(a)','Líder','Vice-Líder','Liderança'];
+  const COUNCIL_LIST_EXCLUDED_NICKS = new Set(['pmjrcc']);
   
   const state = {db:null, auth:null, nick:'', profile:null, access:[], cycle:null, pending:null, proposals:[], votes:[], members:[], council:[], licenses:new Set(), backups:new Map(), search:'', busy:false, unsubs:[]};
   
@@ -95,6 +96,27 @@
     const cargo = clean(role);
     if(low(cargo).includes('ex-') || low(cargo).startsWith('ex ')) return false;
     return ROLES.some(item => cargo === item || cargo.includes(item));
+  }
+  function normalized(value){
+    return low(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  }
+  function councilParticipant(member){
+    const nick = normalized(member?.name || member?.nick);
+    const role = normalized(member?.cargo);
+    if(!nick || COUNCIL_LIST_EXCLUDED_NICKS.has(nick)) return false;
+    if(role === 'lider' || role === 'vice-lider') return false;
+    return roleAllowed(member?.cargo);
+  }
+  function councilParticipantOrder(first, second){
+    const roleWeight = member => {
+      const role = normalized(member?.cargo);
+      if(role.includes('conselheiro')) return 0;
+      if(role.includes('estagiario')) return 1;
+      if(role === 'lideranca') return 2;
+      return 3;
+    };
+    return roleWeight(first) - roleWeight(second)
+      || clean(first?.name || first?.nick).localeCompare(clean(second?.name || second?.nick),'pt-BR',{sensitivity:'base'});
   }
   function nickAllowed(nick){ return state.access.some(item => low(item) === low(nick)); }
   function isLideranca() { return ['Líder', 'Vice-Líder', 'Liderança'].includes(clean(state.profile?.cargo)); }
@@ -206,7 +228,9 @@
       // FILTRO RIGOROSO: Apenas Status 'Ativo'
       state.members = u.docs.map(d => ({id: d.id, ...d.data()})).filter(m => m.status === 'Ativo');
       
-      state.council = state.members.filter(m => roleAllowed(m.cargo));
+      state.council = state.members
+          .filter(councilParticipant)
+          .sort(councilParticipantOrder);
       state.licenses = new Set(l.docs.map(d => low(d.data().nickname)).filter(Boolean));
       
       $('member-list').innerHTML = state.members.map(m => clean(m.name||m.nick)).filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(n => `<option value="${esc(n)}"></option>`).join('');
@@ -460,7 +484,7 @@
       return {key, label:labels[key], status:key==='approved'?'approved':key==='rejected'?'rejected':'attention'};
   }
   
-  function leaderNicks(){ return new Set(state.council.filter(m => ['Líder','Vice-Líder','Liderança'].includes(m.cargo)).flatMap(m => [low(m.name),low(m.nick)]).filter(Boolean)); }
+  function leaderNicks(){ return new Set(state.members.filter(m => ['Líder','Vice-Líder','Liderança'].includes(clean(m.cargo))).flatMap(m => [low(m.name),low(m.nick)]).filter(Boolean)); }
   
   function renderCouncil(){
       if(!state.council.length) return;
