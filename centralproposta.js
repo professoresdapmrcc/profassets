@@ -3,35 +3,41 @@
   if (!document.getElementById('proposal-central-app')) return;
 
   // ========================================================
-  // 🧪 MODO SIMULADOR (TESTE OFF-LINE) 🧪
+  // 🧪 CONFIGURAÇÕES DO SIMULADOR COMPLETO (EDITAR AQUI) 🧪
   // ========================================================
+  const MEU_NICK = "Sr.Gabriel."; // Seu nick para ter botões de Liderança liberados
   
-  // EDITAR AQUI: Coloque os nicks exatos do seu fórum para testar
-  const MEU_NICK = "Sr.Gabriel."; // Seu nick para ter acesso de Liderança no painel
-  const NICK_PUNIDO = "Sr.Gabriel."; // Nick que vai RECEBER a MP de advertência (pode ser o seu mesmo) 
-  const NICK_PUNIDO = "Pegas"; // Nick que vai RECEBER a MP de advertência (pode ser o seu mesmo)
+  // Membros que levarão a punição no teste (VÃO RECEBER MP E SAIR NO TÓPICO!)
+  const NICK_TESTE_1 = "Sr.Gabriel."; 
+  const NICK_TESTE_2 = "Pegas";       
 
-  // Banco de Dados Fictício (Em Memória)
+  const FIREBASE_CONFIG = Object.freeze({apiKey:'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',authDomain:'nexusprof.firebaseapp.com',projectId:'nexusprof',storageBucket:'nexusprof.appspot.com',messagingSenderId:'268861178598',appId:'1:268861178598:web:9686b81bb003f9514fb127',measurementId:'G-MY150DZMTM'});
+
   const state = {
+    db: null,
     nick: MEU_NICK,
-    profile: { cargo: 'Vice-Líder', status: 'Ativo' },
-    cycle: { id: 'ciclo_simulacao_01', status: 'aberto' },
-    proposals: [
-        { id: 'p1', ordem: 9001, autor: 'AutorTeste1', tipo: 'Sugestão', titulo: 'Proposta Teste 1 (Votada)', conteudo: 'Esta proposta foi votada por todos e será aprovada/reprovada normalmente.' },
-        { id: 'p2', ordem: 9002, autor: 'AutorTeste2', tipo: 'Projeto', titulo: 'Proposta Teste 2 (Esquecida)', conteudo: 'Ninguém votou nessa proposta. Quando você encerrar o ciclo, o sistema vai gerar uma advertência por causa dela.' }
-    ],
-    votes: [
-        // O membro punido votou apenas na 9001. A 9002 ficou vazia.
-        { id: 'v1', Nick: NICK_PUNIDO, Ordem: 9001, Veredito: 'Aprovada', Comentario: 'Voto fictício de teste.' }
-    ],
-    members: [
-        { id: 'm1', name: MEU_NICK, cargo: 'Vice-Líder', status: 'Ativo' },
-        { id: 'm2', name: NICK_PUNIDO, cargo: 'Conselheiro(a)', status: 'Ativo' }
-    ],
-    council: [],
-    licenses: new Set(),
+    profile: { cargo: 'Liderança', status: 'Ativo' },
+    cycle: { id: 'ciclo_simulado_02', status: 'aberto', inicioIso: new Date().toISOString() },
     search: '',
-    busy: false
+    busy: false,
+    licenses: new Set(),
+    backups: new Map(),
+    // 2 Propostas falsas
+    proposals: [
+        { ordem: 101, autor: 'Sistema', tipo: 'Sugestão', titulo: 'Proposta Teste 1', conteudo: 'Esta proposta foi votada.', criadoEm: new Date().toISOString() },
+        { ordem: 102, autor: 'Sistema', tipo: 'Projeto', titulo: 'Proposta Teste 2 (Esquecida)', conteudo: 'Nesta proposta ninguém votou. Vai gerar advertência para todos!', criadoEm: new Date().toISOString() }
+    ],
+    // Votos falsos (Os membros votaram na 101, mas ESQUECERAM a 102)
+    votes: [
+        { Nick: NICK_TESTE_1, Ordem: 101, Veredito: 'Aprovada', Comentario: 'Voto simulado' },
+        { Nick: NICK_TESTE_2, Ordem: 101, Veredito: 'Aprovada', Comentario: 'Voto simulado' }
+    ],
+    // Membros falsos
+    members: [
+        { name: NICK_TESTE_1, nick: NICK_TESTE_1, cargo: 'Vice-Líder', status: 'Ativo' },
+        { name: NICK_TESTE_2, nick: NICK_TESTE_2, cargo: 'Vice-Líder', status: 'Ativo' }
+    ],
+    council: []
   };
 
   const $ = id => document.getElementById(id);
@@ -40,19 +46,26 @@
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const orderOf = p => Number(p.ordem ?? p.Ordem ?? 0);
   const voteOrder = v => Number(v.Ordem ?? v.ordem ?? 0);
-  function isLideranca() { return ['Líder', 'Vice-Líder', 'Liderança'].includes(state.profile.cargo); }
+  const idOf = p => clean(p.id || p.ordemId || orderOf(p));
+  function isLideranca() { return ['Líder', 'Vice-Líder', 'Liderança'].includes(clean(state.profile?.cargo)); }
+  function postingDate() { return new Intl.DateTimeFormat('pt-BR', {timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date()); }
 
+  // INICIALIZAÇÃO FIREBASE (Apenas para testar o envio à assistência)
+  if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  state.db = firebase.firestore();
+
+  // Componentes de UI
   function toast(message, type='info', title=''){
     const labels = {success:'Sucesso', error:'Erro', warning:'Atenção', info:'Informação'}, icons = {success:'ti-circle-check', error:'ti-circle-x', warning:'ti-alert-triangle', info:'ti-info-circle'};
     const el = document.createElement('div'); el.className = 'toast'; el.dataset.type = type;
     el.innerHTML = `<i class="ti ${icons[type]||icons.info}"></i><div><strong>${esc(title||labels[type])}</strong><span>${esc(message)}</span></div>`;
-    $('toast-container').append(el); setTimeout(() => el.remove(), 5000);
+    $('toast-container').append(el); setTimeout(() => el.remove(), 6000);
   }
-  function busy(btn, on, label='Processando…'){ if(!btn) return; if(on){ btn.dataset.html = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="loader" style="width:17px;height:17px;border-width:2px"></span>${esc(label)}`; }else{ btn.disabled = false; btn.innerHTML = btn.dataset.html; } }
+  function busy(button, on, label='Processando…'){ if(!button) return; if(on){ button.dataset.html = button.innerHTML; button.disabled = true; button.innerHTML = `<span class="loader" style="width:17px;height:17px;border-width:2px"></span>${esc(label)}`; }else{ button.disabled = false; if(button.dataset.html) button.innerHTML = button.dataset.html; delete button.dataset.html; } }
   function ask(title, message, label='Confirmar', danger=true){ const d=$('confirm-dialog'); $('confirm-title').textContent=title; $('confirm-message').textContent=message; $('confirm-yes').textContent=label; $('confirm-yes').className=danger?'danger-button':'primary-button'; d.showModal(); return new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='confirm'),{once:true})); }
 
   // ==========================================
-  // LÓGICA DE AVALIAÇÃO FAKE E UI
+  // LÓGICA DE DADOS, AVALIAÇÃO E UI
   // ==========================================
   function decision(p, list, leaders){
       if(!list.length) return {key:'none', label:'Sem pareceres', status:'neutral'};
@@ -69,36 +82,36 @@
       const key = w[0], labels = {approved:'Maioria aprovou', rejected:'Maioria reprovou', tutela:'Encaminhada à tutela', reuniao:'Encaminhada à reunião', lideranca:'Pendente da Liderança', autoria:'Retorno à autoria'};
       return {key, label:labels[key], status:key==='approved'?'approved':key==='rejected'?'rejected':'attention'};
   }
-
-  function leaderNicks(){ return new Set(state.council.filter(m => ['Líder','Vice-Líder','Liderança'].includes(m.cargo)).map(m => low(m.name))); }
-
+  
+  function leaderNicks(){ return new Set(state.council.filter(m => ['Líder','Vice-Líder','Liderança'].includes(m.cargo)).flatMap(m => [low(m.name),low(m.nick)]).filter(Boolean)); }
+  
   function renderCouncil(){
       if(!state.council.length) return;
       const orders = new Set(state.proposals.map(orderOf)), relevant = state.votes.filter(v => orders.has(voteOrder(v)));
       $('council-grid').innerHTML = state.council.map(m => {
-          const nick = clean(m.name), list = relevant.filter(v => low(v.Nick||v.nick)===low(nick)), leave = state.licenses.has(low(nick));
+          const nick = clean(m.name||m.nick||'Desconhecido'), list = relevant.filter(v => low(v.Nick||v.nick)===low(nick)), leave = state.licenses.has(low(nick));
           let fav=0, rep=0, neu=0;
           list.forEach(v => { const x = low(v.Veredito||v.veredito); if(x.includes('aprovada')) fav++; else if(x.includes('reprovada')) rep++; else neu++; });
           const stats = leave ? '<span class="warning">Licença ativa</span>' : list.length ? `<span class="success">✓ ${fav}</span><span class="danger">× ${rep}</span><span class="info-text">– ${neu}</span>` : '<span class="danger">Pendente</span>';
-          return `<article class="member-card" data-state="${leave?'leave':list.length?'done':'pending'}"><img src="https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=2&gesture=sml&size=s&headonly=1" alt=""><div class="member-copy"><strong>${esc(nick)}</strong><small>${esc(m.cargo)}</small><div class="member-stats">${stats}</div></div></article>`;
+          return `<article class="member-card" data-state="${leave?'leave':list.length?'done':'pending'}"><img src="https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=2&gesture=sml&size=s&headonly=1" alt=""><div class="member-copy"><strong>${esc(nick)}</strong><small>${esc(m.cargo||'Membro')}</small><div class="member-stats">${stats}</div></div></article>`;
       }).join('');
   }
 
   function card(p){
-      const list = state.votes.filter(v => voteOrder(v)===orderOf(p)), result = decision(p, list, leaderNicks()), order = orderOf(p), title = clean(p.titulo), author = clean(p.autor), type = clean(p.tipo), content = clean(p.conteudo), encoded = encodeURIComponent(JSON.stringify(list));
+      const list = state.votes.filter(v => voteOrder(v)===orderOf(p)), result = decision(p, list, leaderNicks()), order = orderOf(p), title = clean(p.titulo||p.Titulo), author = clean(p.autor||p.Autor), type = clean(p.tipo||p.Categoria), content = clean(p.conteudo||p.Conteudo), encoded = encodeURIComponent(JSON.stringify(list));
       let btnForcar = '';
       if (isLideranca()) {
           btnForcar = `<button type="button" onclick="abrirModalForcarVoto(${order})" title="Forçar Veredito da Liderança" style="margin-left:8px; font-size:10px; background:rgba(192, 38, 211, 0.2); color:#e879f9; padding:3px 8px; border-radius:6px; border:1px solid #d946ef; font-weight:bold; cursor:pointer;"><i class="ti ti-hammer"></i> Forçar</button>`;
       }
-      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order}</span><div class="card-title"><span>${esc(type)}</span><h3>${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><button class="trash" onclick="removeActive(${order})" title="Excluir proposta"><i class="ti ti-trash"></i></button></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>Simulação</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer(es)</button></footer></article>`;
+      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><button class="trash" onclick="removeActive(${order})" title="Excluir proposta"><i class="ti ti-trash"></i></button></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>SIMULAÇÃO OFF</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer(es)</button></footer></article>`;
   }
-
+  
   function renderProposals(){
       const q = low(state.search), list = state.proposals.filter(p => !q || [orderOf(p), p.autor, p.titulo, p.tipo].some(v => low(v).includes(q)));
       $('proposal-count').textContent = `${list.length} proposta(s)`;
       $('proposal-grid').innerHTML = list.length ? list.map(p => card(p)).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Nenhuma proposta encontrada</h3></div>';
   }
-
+  
   window.showVotes = (encoded, order) => {
       let list=[]; try{ list=JSON.parse(decodeURIComponent(encoded)); }catch(_){}
       $('votes-title').textContent = `Pareceres · Proposta nº ${order}`;
@@ -108,17 +121,15 @@
       }).join('') : '<div class="empty compact"><i class="ti ti-message-off"></i><h3>Nenhum parecer</h3></div>';
       $('votes-dialog').showModal();
   };
-
+  
+  // MODAL FORÇAR VOTO 
   window.removeActive = async(order) => { 
       if(!await ask(`Excluir proposta nº ${order}?`, 'A proposta simulada será apagada.', 'Excluir')) return; 
       state.proposals = state.proposals.filter(p => orderOf(p) !== order);
       state.votes = state.votes.filter(v => voteOrder(v) !== order);
-      renderProposals(); renderCouncil(); toast('Proposta simulada excluída.', 'success'); 
+      renderProposals(); renderCouncil(); toast('Proposta excluída.', 'success'); 
   };
 
-  // ==========================================
-  // FORÇAR VOTO (MODAL)
-  // ==========================================
   window.abrirModalForcarVoto = function(ordem) {
       let dialog = document.getElementById('force-vote-dialog');
       if (!dialog) {
@@ -135,28 +146,80 @@
       const veredito = document.getElementById('forcar-veredito').value;
       const comentario = document.getElementById('forcar-comentario').value.trim();
       if (!comentario) { toast("O comentário é obrigatório.", "error"); return; }
-
       document.getElementById('force-vote-dialog').close();
-      
-      // Remove voto antigo liderança se houver e adiciona o novo
       state.votes = state.votes.filter(v => !(voteOrder(v) === Number(ordem) && low(v.Nick) === low(state.nick)));
       state.votes.push({ Nick: state.nick, Ordem: Number(ordem), Comentario: comentario, Veredito: veredito });
-      
       renderProposals(); renderCouncil(); toast("Resultado simulado forçado com sucesso!", "success");
   };
 
+  async function saveManual(e){ 
+      e.preventDefault(); 
+      const order=Number($('form-number').value); 
+      state.proposals.push({ordem:order, autor:$('form-author').value, tipo:$('form-type').value, titulo:$('form-title').value, conteudo:$('form-content').value});
+      e.target.reset(); $('launch-dialog').close(); 
+      renderProposals(); renderCouncil(); toast('Proposta simulada adicionada.', 'success'); 
+  }
+
   // ==========================================
-  // LÓGICA REAL DE ADVERTÊNCIAS (FÓRUM)
+  // DISPARO NO FÓRUM E FIREBASE (MÓDULO REAL)
   // ==========================================
   function validAttachmentUrl(value){ try{ const url = new URL(clean(value)); return ['http:','https:'].includes(url.protocol) ? url.href : ''; }catch(_){ return ''; } }
+
+  function assistanceDateFields(){
+      const formatted = postingDate(), parts = formatted.split('/').map(Number);
+      const start = new Date(Date.UTC(parts[2], parts[1]-1, parts[0]));
+      const end = new Date(start); end.setUTCDate(end.getUTCDate()+30);
+      const pad = value => String(value).padStart(2,'0');
+      return {
+          formatted, iso: `${parts[2]}-${pad(parts[1])}-${pad(parts[0])}`, end: `${pad(end.getUTCDate())}/${pad(end.getUTCMonth()+1)}/${end.getUTCFullYear()}`
+      };
+  }
+
+  // 1. INJEÇÃO REAL NO FIREBASE (ASSISTÊNCIA_REGISTROS)
+  async function sendWarningToAssistance(member, cycle, attachment){
+      const dates = assistanceDateFields();
+      const safeNick = member.nick.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80) || 'membro';
+      const safeCycle = clean(cycle).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100) || 'ciclo';
+      const recordId = `proposta_${safeCycle}_${safeNick}`.slice(0,190);
+      
+      const record = {
+          cargo: member.cargo,
+          nick: member.nick,
+          punicao: 'ADVERTÊNCIA INTERNA',
+          motivo: 'Não avaliou às propostas em tempo hábil.',
+          permissao: 'Conselho da Assistência',
+          data_formatada: dates.formatted,
+          data_iso: dates.iso,
+          data_termino: dates.end,
+          decisao: 'PENDENTE',
+          observacao: '',
+          carta_enviada: true,
+          autor_postagem: state.nick,
+          sincronizado_sheets: false,
+          tipo_ocorrencia: 'adv_interna',
+          origem: 'teste_simulador', // MARCAÇÃO DE TESTE NO BANCO!
+          ciclo_id: cycle,
+          anexo: attachment,
+          propostas_nao_avaliadas: member.missing,
+          quantidade_avaliadas: member.answered,
+          quantidade_propostas: member.total,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      try {
+          await state.db.collection('assistencia_registros').doc(recordId).set(record);
+      } catch (err) {
+          throw new Error('Falha ao enviar para o Firebase Assistência: ' + err.message);
+      }
+  }
 
   function missingCouncilAssessments(){
       const requiredOrders = [...new Set(state.proposals.map(orderOf))];
       if(!requiredOrders.length) return [];
       return state.council.map(member => {
-          const nick = clean(member.name);
+          const nick = clean(member.name || member.nick);
           if(!nick || state.licenses.has(low(nick))) return null;
-          const answered = new Set(state.votes.filter(vote => low(vote.Nick) === low(nick)).map(voteOrder));
+          const answered = new Set(state.votes.filter(vote => low(vote.Nick || vote.nick) === low(nick)).map(voteOrder));
           const missing = requiredOrders.filter(order => !answered.has(order));
           return missing.length ? { nick, cargo: clean(member.cargo), missing, answered: answered.size, total: requiredOrders.length } : null;
       }).filter(Boolean);
@@ -166,44 +229,80 @@
       let dialog = $('warning-attachment-dialog');
       if(!dialog){
           dialog = document.createElement('dialog'); dialog.id = 'warning-attachment-dialog'; dialog.className = 'dialog';
-          dialog.innerHTML = `<div class="dialog-card"><header><div><p class="eyebrow">Conselho da Assistência</p><h2>Advertências do ciclo</h2></div><button id="warning-attachment-close" class="icon-button" type="button"><i class="ti ti-x"></i></button></header><div class="dialog-body"><p>Os membros abaixo não avaliaram todas as propostas e receberão MP/Tópico no fórum (Simulação Real).</p><div id="warning-member-list" class="access-list"></div><label class="field wide" style="margin-top:18px"><span>Link do print comprobatório</span><input id="warning-attachment-url" type="url" placeholder="https://i.imgur.com/exemplo.png" required></label><p id="warning-attachment-error" style="color:#ef6b78;display:none;margin-top:8px">Informe um link válido de imagem.</p></div><footer><button id="warning-attachment-cancel" class="secondary-button" type="button">Cancelar</button><button id="warning-attachment-confirm" class="primary-button" type="button"><i class="ti ti-alert-triangle"></i> Enviar Advertências no Fórum!</button></footer></div>`;
+          dialog.innerHTML = `
+              <div class="dialog-card">
+                  <header>
+                      <div><p class="eyebrow">Conselho da Assistência</p><h2>Advertências do ciclo (SIMULAÇÃO)</h2></div>
+                      <button id="warning-attachment-close" class="icon-button" type="button"><i class="ti ti-x"></i></button>
+                  </header>
+                  <div class="dialog-body">
+                      <p>Os membros abaixo receberão as MPs e Postagens reais no Fórum + Firebase para validar o fluxo.</p>
+                      <div id="warning-member-list" class="access-list"></div>
+                      <label class="field wide" style="margin-top:18px">
+                          <span>Link do print comprobatório</span>
+                          <input id="warning-attachment-url" type="url" placeholder="https://i.imgur.com/exemplo.png" required>
+                      </label>
+                      <p id="warning-attachment-error" style="color:#ef6b78;display:none;margin-top:8px">Informe um endereço começando com http:// ou https://.</p>
+                  </div>
+                  <footer>
+                      <button id="warning-attachment-cancel" class="secondary-button" type="button">Cancelar</button>
+                      <button id="warning-attachment-confirm" class="primary-button" type="button"><i class="ti ti-alert-triangle"></i> Enviar tudo (Ação Real!)</button>
+                  </footer>
+              </div>`;
           document.body.appendChild(dialog);
       }
-      $('warning-member-list').innerHTML = members.map(m => `<span class="access-chip"><span>${esc(m.cargo)} ${esc(m.nick)} · ${m.answered}/${m.total} avaliadas</span></span>`).join('');
-      $('warning-attachment-url').value = ''; $('warning-attachment-error').style.display = 'none'; dialog.showModal();
+
+      $('warning-member-list').innerHTML = members.map(member =>
+          `<span class="access-chip"><span>${esc(member.cargo)} ${esc(member.nick)} · ${member.answered}/${member.total} avaliadas</span></span>`
+      ).join('');
+      $('warning-attachment-url').value = '';
+      $('warning-attachment-error').style.display = 'none';
+      dialog.showModal();
+
       return new Promise(resolve => {
           let finished = false;
           const finish = value => { if(finished) return; finished = true; if(dialog.open) dialog.close(); resolve(value); };
-          $('warning-attachment-confirm').onclick = () => { const url = validAttachmentUrl($('warning-attachment-url').value); if(!url){ $('warning-attachment-error').style.display = 'block'; return; } finish(url); };
-          $('warning-attachment-cancel').onclick = () => finish(''); $('warning-attachment-close').onclick = () => finish(''); dialog.addEventListener('cancel', e => { e.preventDefault(); finish(''); }, {once:true});
+          $('warning-attachment-confirm').onclick = () => {
+              const url = validAttachmentUrl($('warning-attachment-url').value);
+              if(!url){ $('warning-attachment-error').style.display = 'block'; return; }
+              finish(url);
+          };
+          $('warning-attachment-cancel').onclick = () => finish('');
+          $('warning-attachment-close').onclick = () => finish('');
+          dialog.addEventListener('cancel', event => { event.preventDefault(); finish(''); }, {once:true});
       });
   }
 
+  // 2. DISPARO REAL PARA O FÓRUM
   async function forumSubmit(path, data){
       const body = new URLSearchParams();
       Object.entries(data).forEach(([key,value]) => body.append(key, clean(value)));
-      const response = await fetch(path, { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString() });
-      if(!response.ok) throw new Error(`Erro no Fórum HTTP ${response.status}`);
+      const response = await fetch(path, {
+          method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString()
+      });
+      if(!response.ok) throw new Error(`O fórum recusou ${path} (HTTP ${response.status}).`);
   }
 
   function warningTopicBBCode(member){
-      const today = new Intl.DateTimeFormat('pt-BR', {timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date());
-      return `[font=Poppins][size=18][center][color=#560c7e][b]ADVERTÊNCIA INTERNA[/b][/color][/center][/size]\n\n[justify][b]Cargo e nick do(a) advertido(a):[/b] ${member.cargo} ${member.nick}\n[b]Motivo(s):[/b] Não avaliou às propostas em tempo hábil.\n[b]Data:[/b] ${today}\n[b]Permissão:[/b] Conselho da Assistência\n[/justify][/font]`;
+      const today = postingDate();
+      return `[font=Poppins][size=18][center][color=#560c7e][b]ADVERTÊNCIA INTERNA (TESTE DO SISTEMA)[/b][/color][/center][/size]\n\n[justify][b]Cargo e nick do(a) advertido(a):[/b] ${member.cargo} ${member.nick}\n[b]Motivo(s):[/b] Não avaliou às propostas em tempo hábil.\n[b]Data:[/b] ${today}\n[b]Permissão:[/b] Conselho da Assistência\n[/justify][/font]`;
   }
 
   function warningPrivateMessageBBCode(member, attachment){
-      return `[font=Poppins]<div style="border:1.5rem solid #821F88;border-radius:8px;font-family:Poppins;">[table][tr][td][center][img]https://i.imgur.com/hU7bn8R.gif[/img][/center]\n\n[table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][center][img]https://i.imgur.com/QL68H2C.png[/img][/center][size=20][font=Poppins][color=white][b]CARTA DE ADVERTÊNCIA INTERNA[/b][/color][/font][/size][/td][/tr][/table]\n<div style="padding:1.5%;border:1px solid #bdbdbd;border-radius:8px;">[justify]Saudações, [b]${member.nick}[/b].\n\nInforma-se que você [b]recebeu uma advertência interna[/b] na companhia pelo(s) seguinte(s) motivo(s):\n\n[b]Não respondeu às propostas durante o ciclo semanal.[/b]\n\n[color=#821F88][b]COMENTÁRIOS:[/b][/color] O membro não registrou seu parecer nas propostas do período e não possuía licença ativa.\n\n[color=#821F88][b]ANEXOS:[/b][/color] ${attachment}.\n\nLeia as documentações que regem a companhia [url=https://sites.google.com/view/nexusprof/documenta%C3%A7%C3%B5es?authuser=3]clicando aqui[/url] e procure manter-se atento para evitar mais punições. Caso queira recorrer da punição recebida, procure a Liderança apresentando argumentos factuais e plausíveis.[/justify]</div>[/td][/tr][/table]</div>[/font]\n[font=Poppins][center]Atentamente,\n[img]https://i.imgur.com/1kZvQHs.png[/img][/center][/font]`;
+      return `[font=Poppins]<div style="border:1.5rem solid #821F88;border-radius:8px;font-family:Poppins;">[table][tr][td][center][img]https://i.imgur.com/hU7bn8R.gif[/img][/center]\n\n[table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][center][img]https://i.imgur.com/QL68H2C.png[/img][/center][size=20][font=Poppins][color=white][b]CARTA DE ADVERTÊNCIA INTERNA[/b][/color][/font][/size][/td][/tr][/table]\n<div style="padding:1.5%;border:1px solid #bdbdbd;border-radius:8px;">[justify]Saudações, [b]${member.nick}[/b].\n\nIsto é uma mensagem gerada pelo Simulador do Sistema NEXUS para atestar o funcionamento completo de fechamento de ciclo.\n\n[b]Motivo do Teste:[/b] Validar o disparo de MP após advertência em massa.\n\n[color=#821F88][b]COMENTÁRIOS:[/b][/color] O membro não registrou seu parecer nas propostas do período simulado.\n\n[color=#821F88][b]ANEXOS:[/b][/color] ${attachment}.\n[/justify]</div>[/td][/tr][/table]</div>[/font]\n[font=Poppins][center]Atentamente,\n[img]https://i.imgur.com/1kZvQHs.png[/img][/center][/font]`;
   }
 
-  // ==========================================
-  // SIMULAÇÃO DO FECHAMENTO (CHAMA O FÓRUM REAL)
-  // ==========================================
   async function closeCycle(){
       if(state.busy) return;
-      const ok=await ask('Simular Fechamento?', 'Essa ação vai abrir o popup de advertência e, caso você confirme o anexo, o sistema VAI ENVIAR DE VERDADE a MP e postar no Tópico.');
+      const ok=await ask(
+          'Iniciar Teste Real de Disparos?', 
+          `Isto vai injetar registros na Assistência do Firebase, postar 2 respostas no Tópico e mandar 2 MPs reais (para ${NICK_TESTE_1} e ${NICK_TESTE_2}).`, 
+          'Iniciar Disparos', false
+      );
       if(!ok) return;
 
-      state.busy=true; busy($('close-cycle'),true,'Conferindo…');
+      state.busy=true;
+      busy($('close-cycle'),true,'Conferindo…');
       try{
           const warningTargets = missingCouncilAssessments();
           let attachment='';
@@ -211,25 +310,26 @@
           if(warningTargets.length){
               busy($('close-cycle'),false);
               attachment = await requestWarningAttachment(warningTargets);
-              if(!attachment){ toast('Fechamento cancelado: informe o link do print para aplicar as advertências.','warning'); return; }
-              busy($('close-cycle'),true,'Fechando e Postando no Fórum…');
+              if(!attachment){ toast('Cancelado: link do print obrigatório.','warning'); return; }
+              busy($('close-cycle'),true,'Disparando Firebase e Fórum…');
               
-              toast("Disparando BBCode no Fórum...", "loading");
               for(const member of warningTargets){
-                  // DISPARA NO TÓPICO REAL (Mude o ID 32246 se quiser testar em outro tópico)
-                  await forumSubmit('/post', {t:'32246', message:warningTopicBBCode(member), mode:'reply', post:'Enviar'});
-                  // DISPARA MENSAGEM PRIVADA REAL
-                  await forumSubmit('/privmsg', {folder:'inbox', mode:'post', post:'1', 'username[]':member.nick, subject:'[PROF] CARTA DE ADVERTÊNCIA INTERNA', message:warningPrivateMessageBBCode(member, attachment)});
+                  toast(`Enviando ${member.nick} para o Firebase Assistência...`, "info");
+                  await sendWarningToAssistance(member, state.cycle.id, attachment);
+
+                  toast(`Disparando Fórum para ${member.nick}...`, "info");
+                  await forumSubmit('/post', {t:'32246',message:warningTopicBBCode(member),mode:'reply',post:'Enviar'});
+                  await forumSubmit('/privmsg', {folder:'inbox',mode:'post',post:'1','username[]':member.nick,subject:'[PROF] TESTE DE MENSAGEM DO SISTEMA',message:warningPrivateMessageBBCode(member,attachment)});
               }
           }
 
-          // Limpa a tela simulando que fechou
+          // Simula encerramento limpando a tela
           state.proposals = [];
           state.votes = [];
-          renderProposals();
-          renderCouncil();
-          $('cycle-label').textContent = 'Novo Ciclo Iniciado';
-          toast('Teste de fechamento concluído! Verifique a sua caixa de Mensagens Privadas.', 'success');
+          renderProposals(); renderCouncil();
+          $('cycle-label').textContent = 'Fechamento Simulado Concluído';
+          toast('Fluxo concluído com sucesso! Veja o Firebase, sua MP e o Tópico.', 'success');
+
       }catch(e){
           toast(e.message||'Interrompido.','error');
       }finally{
@@ -238,33 +338,40 @@
   }
 
   // ==========================================
-  // INICIALIZAÇÃO
+  // INICIALIZAÇÃO DA INTERFACE SIMULADA
   // ==========================================
-  function navigate(name){ document.querySelectorAll('.view').forEach(v => v.hidden = v.id!==`view-${name}`); document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===name)); const labels = {propostas:'Central de Propostas', historico:'Histórico de Propostas', configuracoes:'Configurações da Central'}; $('page-label').textContent = labels[name]; }
+  function navigate(name){ document.querySelectorAll('.view').forEach(v => v.hidden = v.id!==`view-${name}`); document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===name)); const labels = {propostas:'Central de Propostas', historico:'Histórico de Propostas', configuracoes:'Configurações da Central'}; $('page-label').textContent = labels[name]; location.hash = name; sidebar(false); document.querySelector('.stage').scrollTop = 0; }
+  function sidebar(open){ $('sidebar').classList.toggle('open', open); }
+  function themeVision(){ const applyTheme=(v,s=false)=>{ document.documentElement.dataset.theme=v; $('theme-button').innerHTML=`<i class="ti ${v==='dark'?'ti-sun':'ti-moon'}"></i>`; document.querySelector('meta[name=theme-color]').content = v==='dark'?'#0f0512':'#821f88'; if(s) localStorage.setItem('PROPOSTAS_THEME',v); }; applyTheme(localStorage.getItem('PROPOSTAS_THEME')==='light'?'light':'dark'); $('theme-button').onclick = () => applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true); const applyVision=(sc,c,s=false)=>{ document.documentElement.dataset.scale=sc; document.documentElement.dataset.contrast=c?'high':'standard'; document.querySelectorAll('[data-scale]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scale===sc))); $('contrast-state').textContent=c?'Ativado':'Desativado'; if(s) localStorage.setItem('PROPOSTAS_VISION',JSON.stringify({scale:sc,contrast:c})); }; let pref={}; try{ pref=JSON.parse(localStorage.getItem('PROPOSTAS_VISION')||'{}'); }catch(_){} applyVision(pref.scale||'normal',pref.contrast===true); $('vision-button').onclick=()=>{ $('vision-panel').hidden=!$('vision-panel').hidden; }; document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>applyVision(b.dataset.scale,document.documentElement.dataset.contrast==='high',true)); $('contrast-button').onclick=()=>applyVision(document.documentElement.dataset.scale,document.documentElement.dataset.contrast!=='high',true); $('vision-reset').onclick=()=>applyVision('normal',false,true); }
   
-  function bind(){
-      document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
-      $('open-launch').onclick=()=>$('launch-dialog').showModal();
-      document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-      $('launch-form').onsubmit=(e)=>{ e.preventDefault(); toast("Lançamento simulado desativado.", "warning"); };
-      $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); };
-      $('close-cycle').onclick=closeCycle;
-      document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();}));
+  function bind(){ 
+      document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); 
+      $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); 
+      $('sidebar-overlay').onclick=()=>sidebar(false); 
+      $('open-launch').onclick=()=>$('launch-dialog').showModal(); 
+      document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); 
+      $('launch-form').onsubmit=saveManual; 
+      $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; 
+      $('close-cycle').onclick=closeCycle; 
+      document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); 
   }
-
-  setTimeout(() => {
-      $('access-screen').hidden = true;
+  
+  function init() {
+      bind(); themeVision();
+      state.council = state.members.filter(m => ['Estagiário(a)','Conselheiro(a)','Líder','Vice-Líder','Liderança'].includes(m.cargo));
+      
       $('current-nick').textContent = state.nick;
       $('current-role').textContent = state.profile.cargo;
       $('current-avatar').src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(state.nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
-      $('cycle-label').textContent = 'Ciclo de Simulação';
-      
-      state.council = state.members;
-      bind();
+      $('access-screen').classList.add('hidden');
+      setTimeout(() => $('access-screen').hidden = true, 220);
+      $('cycle-label').textContent = 'Modo Simulação c/ Disparos Reais';
+
       renderProposals();
       renderCouncil();
       navigate('propostas');
-      toast("Modo Simulador de Fechamento Iniciado!", "warning");
-  }, 1000);
+      toast("Simulador Integrado! O fechamento fará disparos reais.", "warning");
+  }
 
+  init();
 })();
