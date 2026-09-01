@@ -33,9 +33,11 @@ $(document).ready(function () {
             };
 
             let proposalDb = null;
+            let proposalAuth = null;
             try {
                 if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
                 proposalDb = firebase.firestore();
+                proposalAuth = firebase.auth();
             } catch (error) {
                 console.error('Falha ao inicializar o Firebase:', error);
             }
@@ -1007,21 +1009,47 @@ ${generateProposalBody(data)}
                 });
             }
 
-            async function saveProposalToFirebase(data) {
+            async function ensureAnonymousFirebaseSession() {
+                if (!proposalAuth) throw new Error('O Firebase Authentication não foi inicializado.');
+                if (proposalAuth.currentUser) return proposalAuth.currentUser;
+
+                await proposalAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+                const credential = await proposalAuth.signInAnonymously();
+                if (!credential.user) throw new Error('O Firebase não criou a sessão de gravação.');
+                return credential.user;
+            }
+
+            async function saveProposalToFirebase(data, sendLeadership) {
                 if (!proposalDb) throw new Error('O Firebase não foi inicializado.');
-                await proposalDb
+
+                const firebaseUser = await ensureAnonymousFirebaseSession();
+                const proposalId = String(data.numero);
+                const proposalRef = proposalDb
                     .collection('nexus_config')
                     .doc('Propostas')
                     .collection('lista_propostas')
-                    .doc(String(data.numero))
-                    .set({
+                    .doc(proposalId);
+
+                try {
+                    await proposalRef.set({
                         ordem: Number(data.numero),
+                        ordemId: proposalId,
                         autor: data.autor,
+                        autorUid: firebaseUser.uid,
                         tipo: data.classificacao,
                         titulo: data.tema,
-                        conteudo: data.descricaoTexto,
-                        data: new Date().toISOString()
+                        conteudo: escapeHtml(data.descricaoTexto),
+                        data: new Date().toISOString(),
+                        origem: 'forum-ouvidoria',
+                        enviadoLideranca: sendLeadership === true,
+                        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
                     });
+                } catch (error) {
+                    if (error?.code === 'permission-denied') {
+                        throw new Error('O número já existe ou as regras do Firebase ainda não foram publicadas.');
+                    }
+                    throw error;
+                }
             }
 
             function saveProposalToSheet(data) {
@@ -1115,7 +1143,7 @@ ${generateProposalBody(data)}
 
                     submitButton.html('<i class="fas fa-spinner fa-spin"></i> Salvando registros...');
                     const [firebaseResult, sheetResult] = await Promise.allSettled([
-                        saveProposalToFirebase(data),
+                        saveProposalToFirebase(data, sendLeadership),
                         saveProposalToSheet(data)
                     ]);
 
