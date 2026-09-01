@@ -1,137 +1,861 @@
-(() => {
-  'use strict';
-  if (!document.getElementById('proposal-central-app')) return;
+// =========================================================
+// PAINEL DE GESTÃO - FIREBASE + INTEGRAÇÃO TRATAMENTO
+// =========================================================
 
-  const FIREBASE_CONFIG = Object.freeze({apiKey:'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',authDomain:'nexusprof.firebaseapp.com',projectId:'nexusprof',storageBucket:'nexusprof.appspot.com',messagingSenderId:'268861178598',appId:'1:268861178598:web:9686b81bb003f9514fb127',measurementId:'G-MY150DZMTM'});
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTHOBFaiSFvtbIhfEwU_14F53LDhOV2H_pw6qj6dy9EmS4LkHUZhrImG_2GWgjup9p/exec';
-  const ROLES = ['Estagiário(a)','Conselheiro(a)','Líder','Vice-Líder','Liderança'];
-  const state = {db:null,auth:null,nick:'',profile:null,access:[],cycle:null,pending:null,proposals:[],votes:[],members:[],council:[],licenses:new Set(),backups:new Map(),search:'',busy:false,unsubs:[]};
-  const $ = id => document.getElementById(id);
-  const clean = value => String(value ?? '').trim();
-  const low = value => clean(value).toLocaleLowerCase('pt-BR');
-  const esc = value => String(value ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const ts = () => firebase.firestore.FieldValue.serverTimestamp();
-  const orderOf = p => Number(p.ordem ?? p.Ordem ?? 0);
-  const voteOrder = v => Number(v.Ordem ?? v.ordem ?? 0);
-  const idOf = p => clean(p.id || p.ordemId || orderOf(p));
-  const proposals = () => state.db.collection('nexus_config').doc('Propostas').collection('lista_propostas');
-  const votes = () => state.db.collection('nexus_config').doc('Propostas').collection('votos_conselho');
-  const cycles = () => state.db.collection('nexus_config').doc('Propostas').collection('ciclos');
-  const currentCycle = () => state.db.collection('nexus_config').doc('Propostas').collection('configuracoes').doc('ciclo_atual');
-  const accessDoc = () => state.db.collection('nexus_config').doc('Propostas').collection('configuracoes').doc('acessos');
-  const backups = () => state.db.collection('nexus_config').doc('backup_respostas').collection('historico');
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzTHOBFaiSFvtbIhfEwU_14F53LDhOV2H_pw6qj6dy9EmS4LkHUZhrImG_2GWgjup9p/exec';
 
-  function validForumNick(value){
-    const nick=clean(value),blocked=['ANONYMOUS','ANÔNIMO','ANONIMO','CONVIDADO','GUEST'];
-    return nick&&!blocked.includes(nick.toLocaleUpperCase('pt-BR'))?nick:'';
-  }
-  function decodeForumNick(value){
-    const unescaped=clean(value)
-      .replace(/\\x([0-9a-f]{2})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
-      .replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
-      .replace(/\\(['"\\])/g,'$1');
-    const decoder=document.createElement('textarea');decoder.innerHTML=unescaped;
-    return validForumNick(decoder.value);
-  }
-  async function forumNick(){
-    const data=window._userdata||{},direct=validForumNick(data.username);
-    const explicitlyGuest=Number(data.session_logged_in)===0||Number(data.user_id)===-1;
-    if(direct&&!explicitlyGuest)return direct;
+const ALLOWED_ROLES = ["Estagiário(a)", "Conselheiro(a)", "Líder", "Vice-Líder", "Liderança"]; 
+let currentUserNick = "";
+let currentUserRole = ""; // Variável global para garantir a permissão da Liderança
+let todosOsBackups = {}; 
+window.allVotesRaw = []; 
+let globalLideresNicks = new Set(); // Cache para manter as tags de liderança no histórico
 
-    try{
-      const response=await fetch('/',{credentials:'same-origin',cache:'no-store'});
-      if(!response.ok)throw Error(`HTTP ${response.status}`);
-      const html=await response.text();
-      const patterns=[
-        /_userdata\s*\[\s*['"]username['"]\s*\]\s*=\s*['"]([^'"]+)['"]/i,
-        /_userdata\.username\s*=\s*['"]([^'"]+)['"]/i,
-        /["']username["']\s*:\s*["']([^"']+)["']/i
-      ];
-      for(const pattern of patterns){const match=html.match(pattern),nick=match?decodeForumNick(match[1]):'';if(nick)return nick;}
-      throw Error('Usuário não localizado no HTML do fórum.');
-    }catch(error){
-      console.error('Falha ao identificar usuário do fórum:',error);
-      return'';
+function showToast(msg, type = 'success') {
+    const div = document.createElement('div');
+    div.className = `toast-modern ${type}`;
+    div.innerHTML = `<i class="fas ${type === 'loading' ? 'fa-circle-notch fa-spin text-purple-400' : type === 'success' ? 'fa-check text-purple-400' : 'fa-times text-red-400'}"></i> <span>${msg}</span>`;
+    document.body.appendChild(div);
+    if (type !== 'loading') setTimeout(() => div.remove(), 3000);
+    return div;
+}
+
+function toggleDisplay(id, show) {
+    const el = document.getElementById(id);
+    if(el) show ? el.classList.remove('hidden') : el.classList.add('hidden');
+}
+
+function formatDateFull(dateStr) {
+    const d = dateStr ? new Date(dateStr) : new Date();
+    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    return `${String(d.getDate()).padStart(2, '0')} ${meses[d.getMonth()].toUpperCase()} ${d.getFullYear()}`;
+}
+
+// ==========================================
+// 1. INICIALIZAÇÃO E CONTROLE DE ACESSO
+// ==========================================
+document.addEventListener('userDataReady', async (e) => {
+    const userData = e.detail.userData;
+    
+    if (!userData) {
+        document.getElementById('access-denied-screen').classList.remove('hidden');
+        return;
     }
-  }
-  function roleAllowed(role){const cargo=clean(role);return ROLES.some(item=>cargo===item||cargo.includes(item));}
-  function nickAllowed(nick){return state.access.some(item=>low(item)===low(nick));}
-  function formatDate(value,time=false){if(!value)return'Data indisponível';const d=typeof value.toDate==='function'?value.toDate():new Date(value);if(isNaN(d))return'Data indisponível';return new Intl.DateTimeFormat('pt-BR',time?{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}:{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',year:'numeric'}).format(d);}
-  function friday(){return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',weekday:'long'}).format(new Date()).toLowerCase().startsWith('sexta');}
-  function cycleId(){return`ciclo_${Date.now()}_${clean(state.auth.currentUser?.uid).slice(0,6)||'forum'}`;}
-  function nextFriday(){const d=new Date();let n=(5-d.getDay()+7)%7;if(!n)n=7;d.setDate(d.getDate()+n);d.setHours(23,59,59,999);return d.toISOString();}
 
-  function toast(message,type='info',title=''){
-    const labels={success:'Sucesso',error:'Erro',warning:'Atenção',info:'Informação'},icons={success:'ti-circle-check',error:'ti-circle-x',warning:'ti-alert-triangle',info:'ti-info-circle'};
-    const el=document.createElement('div');el.className='toast';el.dataset.type=type;el.innerHTML=`<i class="ti ${icons[type]||icons.info}"></i><div><strong>${esc(title||labels[type])}</strong><span>${esc(message)}</span></div>`;$('toast-container').append(el);setTimeout(()=>el.remove(),type==='error'?7000:4800);
-  }
-  function busy(button,on,label='Processando…'){if(!button)return;if(on){button.dataset.html=button.innerHTML;button.disabled=true;button.innerHTML=`<span class="loader" style="width:17px;height:17px;border-width:2px"></span>${esc(label)}`;}else{button.disabled=false;if(button.dataset.html)button.innerHTML=button.dataset.html;delete button.dataset.html;}}
-  function ask(title,message,label='Confirmar',danger=true){const d=$('confirm-dialog');$('confirm-title').textContent=title;$('confirm-message').textContent=message;$('confirm-yes').textContent=label;$('confirm-yes').className=danger?'danger-button':'primary-button';d.showModal();return new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='confirm'),{once:true}));}
-  function deny(title,message){$('access-title').textContent=title;$('access-message').textContent=message;const l=$('access-screen').querySelector('.loader');if(l)l.hidden=true;}
-  function allow(){ $('current-nick').textContent=state.nick;$('current-role').textContent=clean(state.profile?.cargo)||'Acesso adicional';$('current-avatar').src=`https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(state.nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;$('current-avatar').alt=`Avatar de ${state.nick}`;$('access-screen').classList.add('hidden');setTimeout(()=>$('access-screen').hidden=true,220);}
+    const userCargo = userData.cargo || "";
+    const isAuthorized = ALLOWED_ROLES.some(role => userCargo.includes(role));
 
-  async function firebaseSession(){
-    if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
-    state.auth=firebase.auth();state.db=firebase.firestore();
-    await state.auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-    if(!state.auth.currentUser)await state.auth.signInAnonymously();
-  }
-  async function loadIdentity(){
-    state.nick=await forumNick();if(!state.nick){deny('Acesso negado','Não foi possível identificar sua sessão do fórum. Recarregue a página e tente novamente.');return false;}
-    const [byName,byNick,access]=await Promise.all([state.db.collection('users').where('name','==',state.nick).limit(1).get(),state.db.collection('users').where('nick','==',state.nick).limit(1).get(),accessDoc().get()]);
-    const doc=!byName.empty?byName.docs[0]:!byNick.empty?byNick.docs[0]:null;state.profile=doc?{id:doc.id,...doc.data()}:null;state.access=access.exists&&Array.isArray(access.data().nicknames)?access.data().nicknames:[];
-    if(!roleAllowed(state.profile?.cargo)&&!nickAllowed(state.nick)){deny('Acesso não autorizado','Seu cargo ou nickname não possui permissão para acessar esta Central.');return false;}
-    allow();return true;
-  }
+    if (!isAuthorized) {
+        document.getElementById('access-denied-screen').classList.remove('hidden');
+        return;
+    }
 
-  async function ensureCycle(){
-    state.cycle=await state.db.runTransaction(async tx=>{const ref=currentCycle(),snap=await tx.get(ref);if(snap.exists&&snap.data().status==='aberto'&&snap.data().id)return snap.data();const id=cycleId(),data={id,status:'aberto',inicioEm:ts(),inicioIso:new Date().toISOString(),previsaoFimIso:nextFriday(),abertoPor:state.nick,abertoPorUid:state.auth.currentUser.uid,atualizadoEm:ts()};tx.set(ref,data);tx.set(cycles().doc(id),data);return data;});renderCycle();return state.cycle;
-  }
-  async function migrateLegacy(){const snap=await proposals().get();let batch=state.db.batch(),count=0,total=0;for(const doc of snap.docs){if(doc.data().cicloId)continue;batch.update(doc.ref,{cicloId:state.cycle.id,ordemId:clean(doc.data().ordemId||doc.id),atualizadoEm:ts()});count++;total++;if(count===400){await batch.commit();batch=state.db.batch();count=0;}}if(count)await batch.commit();if(total)toast(`${total} proposta(s) anterior(es) foram vinculadas ao ciclo atual.`,'info');}
-  function renderCycle(){$('cycle-label').textContent=state.cycle?`${formatDate(state.cycle.inicioEm||state.cycle.inicioIso)} → próxima sexta`:'Preparando…';}
+    // Configuração Inicial de Acesso Liberado
+    currentUserNick = userData.name || userData.nick;
+    currentUserRole = userCargo; // Salva o cargo real do usuário
+    db = firebase.firestore();
 
-  async function loadPeople(){const[u,l]=await Promise.all([state.db.collection('users').get(),state.db.collection('licencas').where('status_licenca','==','Ativa').get()]);state.members=u.docs.map(d=>({id:d.id,...d.data()}));state.council=state.members.filter(m=>roleAllowed(m.cargo));state.licenses=new Set(l.docs.map(d=>low(d.data().nickname)).filter(Boolean));$('member-list').innerHTML=state.members.map(m=>clean(m.name||m.nick)).filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(n=>`<option value="${esc(n)}"></option>`).join('');renderCouncil();}
-  function startLive(){state.unsubs.forEach(fn=>fn());state.unsubs=[
-    currentCycle().onSnapshot(s=>{if(s.exists){state.cycle=s.data();renderCycle();renderProposals();renderCouncil();}}),
-    proposals().orderBy('ordem','desc').onSnapshot(s=>{state.proposals=s.docs.map(d=>({id:d.id,...d.data()}));renderProposals();renderCouncil();},liveError),
-    votes().onSnapshot(s=>{state.votes=s.docs.map(d=>({id:d.id,...d.data()}));renderProposals();renderCouncil();},liveError),
-    accessDoc().onSnapshot(s=>{state.access=s.exists&&Array.isArray(s.data().nicknames)?s.data().nicknames:[];if(!roleAllowed(state.profile?.cargo)&&!nickAllowed(state.nick)){deny('Acesso removido','Seu nickname não possui mais acesso.');$('access-screen').hidden=false;$('access-screen').classList.remove('hidden');state.unsubs.forEach(fn=>fn());}renderAccess();},liveError),
-    cycles().where('status','in',['fechando','erro']).onSnapshot(s=>{const d=s.docs[0];state.pending=d?{id:d.id,...d.data()}:null;renderRecovery();},liveError)
-  ];}
-  function liveError(error){console.error(error);toast('Falha na atualização em tempo real. Confira as regras do Firebase.','error');}
-  function activeProposals(){return state.cycle?state.proposals.filter(p=>p.cicloId===state.cycle.id):[];}
-  function votesFor(p,list=state.votes){return list.filter(v=>voteOrder(v)===orderOf(p));}
+    toggleDisplay('access-denied-screen', false); 
+    
+    // Oculta qualquer bloqueio visual que tenha sobrado
+    const timeBlock = document.getElementById('time-block-screen');
+    if(timeBlock) timeBlock.classList.add('hidden');
+    
+    toggleDisplay('main-app-screen', true);
+});
 
-  function decision(p,list,leaders){if(!list.length)return{key:'none',label:'Sem pareceres',status:'neutral'};const leader=list.find(v=>leaders.has(low(v.Nick||v.nick)));if(leader){const verdict=low(leader.Veredito||leader.veredito);if(verdict.includes('aprovada'))return{key:'approved',label:'Aprovada pela Liderança',status:'approved'};if(verdict.includes('reprovada'))return{key:'rejected',label:'Reprovada pela Liderança',status:'rejected'};}const c={approved:0,rejected:0,tutela:0,reuniao:0,lideranca:0,autoria:0};list.forEach(v=>{const x=low(v.Veredito||v.veredito);if(x.includes('aprovada'))c.approved++;else if(x.includes('reprovada'))c.rejected++;else if(x.includes('tutela'))c.tutela++;else if(x.includes('reuni'))c.reuniao++;else if(x.includes('lideran'))c.lideranca++;else if(x.includes('autoria'))c.autoria++;});const max=Math.max(...Object.values(c)),w=Object.keys(c).filter(k=>c[k]===max&&max>0);if(w.length!==1)return{key:'tie',label:'Empate técnico',status:'pending'};const key=w[0],labels={approved:'Maioria aprovou',rejected:'Maioria reprovou',tutela:'Encaminhada à tutela',reuniao:'Encaminhada à reunião',lideranca:'Pendente da Liderança',autoria:'Retorno à autoria'};return{key,label:labels[key],status:key==='approved'?'approved':key==='rejected'?'rejected':'attention'};}
-  function leaderNicks(){return new Set(state.council.filter(m=>['Líder','Vice-Líder','Liderança'].includes(m.cargo)).flatMap(m=>[low(m.name),low(m.nick)]).filter(Boolean));}
-  function renderCouncil(){if(!state.council.length)return;const orders=new Set(activeProposals().map(orderOf)),relevant=state.votes.filter(v=>orders.has(voteOrder(v)));$('council-grid').innerHTML=state.council.map(m=>{const nick=clean(m.name||m.nick||'Desconhecido'),list=relevant.filter(v=>low(v.Nick||v.nick)===low(nick)),leave=state.licenses.has(low(nick));let fav=0,rep=0,neu=0;list.forEach(v=>{const x=low(v.Veredito||v.veredito);if(x.includes('aprovada'))fav++;else if(x.includes('reprovada'))rep++;else neu++;});const stats=leave?'<span class="warning">Licença ativa</span>':list.length?`<span class="success">✓ ${fav}</span><span class="danger">× ${rep}</span><span class="info-text">– ${neu}</span>`:'<span class="danger">Pendente</span>';return`<article class="member-card" data-state="${leave?'leave':list.length?'done':'pending'}"><img src="https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=2&gesture=sml&size=s&headonly=1" alt=""><div class="member-copy"><strong>${esc(nick)}</strong><small>${esc(m.cargo||'Membro')}</small><div class="member-stats">${stats}</div></div></article>`;}).join('');}
+// ==========================================
+// 2. NAVEGAÇÃO ENTRE ABAS
+// ==========================================
+window.switchPanel = function(tabId) {
+    const panels = ['view-cadastro', 'view-resultados', 'view-historico'];
+    const buttons = ['nav-cadastro', 'nav-resultados', 'nav-historico'];
+    
+    panels.forEach(id => document.getElementById(id).classList.add('hidden'));
+    buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.classList.remove('active-cargo', 'text-white');
+            btn.classList.add('text-slate-400');
+        }
+    });
+    
+    const activeView = tabId.replace('tab-', 'view-').replace('nav-', 'view-');
+    const targetPanel = document.getElementById(activeView);
+    if (targetPanel) targetPanel.classList.remove('hidden');
 
-  function card(p,opt={}){const list=opt.votes||votesFor(p),result=decision(p,list,leaderNicks()),order=orderOf(p),title=clean(p.titulo||p.Titulo||'Sem tema'),author=clean(p.autor||p.Autor||'Não informado'),type=clean(p.tipo||p.Categoria||'Proposta'),content=clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'),encoded=encodeURIComponent(JSON.stringify(list)),action=opt.backup?`removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})`:`removeActive('${esc(idOf(p))}',${order})`;return`<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><button class="trash" onclick="${action}" title="Excluir proposta"><i class="ti ti-trash"></i></button></div><span class="status">${esc(result.label)}</span><p class="content">${esc(content)}</p><footer class="card-footer"><small>${esc(formatDate(p.criadoEm||p.data||p.Data,true))}</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer${list.length===1?'':'es'}</button></footer></article>`;}
-  function renderProposals(){const q=low(state.search),list=activeProposals().filter(p=>!q||[orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)));$('proposal-count').textContent=`${list.length} proposta${list.length===1?'':'s'}`;$('proposal-grid').innerHTML=list.length?list.map(p=>card(p)).join(''):'<div class="empty"><i class="ti ti-file-off"></i><h3>Nenhuma proposta encontrada</h3></div>';}
-  window.showVotes=(encoded,order)=>{let list=[];try{list=JSON.parse(decodeURIComponent(encoded));}catch(_){}$('votes-title').textContent=`Pareceres · Proposta nº ${order}`;$('votes-content').innerHTML=list.length?list.map(v=>{const verdict=clean(v.Veredito||v.veredito||'Sem veredito'),cls=low(verdict).includes('aprovada')?'success':low(verdict).includes('reprovada')?'danger':'warning';return`<article class="vote"><div><strong>${esc(v.Nick||v.nick||'Não identificado')}</strong><span class="${cls}">${esc(verdict)}</span></div><p>${esc(v.Comentario||v.comentario||'Sem comentário.')}</p></article>`;}).join(''):'<div class="empty compact"><i class="ti ti-message-off"></i><h3>Nenhum parecer</h3></div>';$('votes-dialog').showModal();};
-  window.removeActive=async(id,order)=>{if(!await ask(`Excluir proposta nº ${order}?`,'A proposta e todos os pareceres vinculados serão apagados.','Excluir proposta'))return;try{const b=state.db.batch();b.delete(proposals().doc(id));state.votes.filter(v=>voteOrder(v)===order).forEach(v=>b.delete(votes().doc(v.id)));await b.commit();toast('Proposta e pareceres excluídos.','success');}catch(e){console.error(e);toast('Não foi possível excluir a proposta.','error');}};
-  window.removeHistory=async(backup,id,order)=>{if(!await ask(`Excluir proposta nº ${order} do histórico?`,'A proposta e seus pareceres serão removidos somente deste backup.','Excluir do histórico'))return;try{const ref=backups().doc(backup);await state.db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)throw Error('Backup não encontrado.');const d=s.data(),ps=(d.propostas||[]).filter(p=>idOf(p)!==id&&orderOf(p)!==order),vs=(d.votos||[]).filter(v=>voteOrder(v)!==order);tx.update(ref,{propostas:ps,votos:vs,quantidadePropostas:ps.length,quantidadeVotos:vs.length,atualizadoEm:ts(),atualizadoPor:state.nick});});await loadBackups(backup);toast('Proposta removida do histórico.','success');}catch(e){toast(e.message||'Falha ao alterar o histórico.','error');}};
+    const activeBtn = document.getElementById(tabId);
+    if (activeBtn) {
+        activeBtn.classList.add('active-cargo', 'text-white');
+        activeBtn.classList.remove('text-slate-400');
+    }
 
-  async function saveManual(e){e.preventDefault();const btn=$('save-proposal'),order=Number($('form-number').value);busy(btn,true,'Salvando…');try{await ensureCycle();const ref=proposals().doc(String(order)),cycleRef=currentCycle();await state.db.runTransaction(async tx=>{const cycleSnap=await tx.get(cycleRef),proposalSnap=await tx.get(ref);if(proposalSnap.exists)throw Error('Já existe uma proposta com esse número.');if(!cycleSnap.exists||cycleSnap.data().status!=='aberto'||!cycleSnap.data().id)throw Error('O ciclo atual está em transição. Tente novamente.');tx.set(ref,{ordem:order,ordemId:String(order),autor:clean($('form-author').value),autorUid:state.auth.currentUser.uid,tipo:$('form-type').value,titulo:clean($('form-title').value),conteudo:clean($('form-content').value),data:new Date().toISOString(),origem:'central-forumeiros',enviadoLideranca:false,cicloId:cycleSnap.data().id,criadoEm:ts()});});e.target.reset();$('launch-dialog').close();toast('Proposta adicionada ao ciclo atual.','success');}catch(err){toast(err.message||'Não foi possível salvar.','error');}finally{busy(btn,false);}}
-  async function switchCycle(){return state.db.runTransaction(async tx=>{const ref=currentCycle(),s=await tx.get(ref);if(!s.exists||s.data().status!=='aberto')throw Error('O ciclo atual não está aberto.');const old=s.data(),id=cycleId(),now=new Date().toISOString(),next={id,status:'aberto',inicioEm:ts(),inicioIso:now,previsaoFimIso:nextFriday(),abertoPor:state.nick,abertoPorUid:state.auth.currentUser.uid,atualizadoEm:ts()};tx.set(cycles().doc(old.id),{...old,status:'fechando',fechadoEm:ts(),fechadoIso:now,fechadoPor:state.nick,fechadoPorUid:state.auth.currentUser.uid},{merge:true});tx.set(cycles().doc(id),next);tx.set(ref,next);return{old:old.id,next:id};});}
-  async function reward(p,cycle){for(const nickname of clean(p.autor).split('/').map(clean).filter(Boolean)){const member=state.members.find(m=>low(m.name||m.nick)===low(nickname));if(!member)continue;const safe=`proposta_${cycle}_${idOf(p)}`.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,190),user=state.db.collection('users').doc(member.id),history=user.collection('historico').doc(safe),notification=state.db.collection('notificacoes').doc(`${safe}_${member.id}`.slice(0,220));await state.db.runTransaction(async tx=>{const h=await tx.get(history);if(h.exists)return;const u=await tx.get(user),count=Number(u.data()?.propostas)||0;tx.update(user,{propostas:count+1});tx.set(history,{titulo:'Proposta Aprovada pelo Conselho',timestamp:ts(),data:formatDate(new Date()),autor:state.nick,conteudo:`<b>Tipo:</b> ${esc(p.tipo)}<br><b>Ordem:</b> ${p.ordem}<br><b>Título:</b> ${esc(p.titulo)}<br><br><b>Síntese:</b> ${esc(p.conteudo)}`,dados:{departamento:'Companhia',tipo:p.tipo,ordem:p.ordem,titulo:p.titulo,sintese:p.conteudo,parceiros:p.autor,cicloId:cycle}});tx.set(notification,{tipo:'companhia_ouvidoria',dados:{nomeUsuario:nickname,tipoProposta:p.tipo},link:`/membros/${encodeURIComponent(nickname)}`,userId:member.id,lida:false,timestamp:ts(),cicloId:cycle,propostaId:idOf(p)});});}}
-  async function processCycle(cycle,next=state.cycle?.id){const ref=cycles().doc(cycle);try{await ref.set({status:'fechando',processamentoPor:state.nick,processamentoEm:ts()},{merge:true});const backupRef=backups().doc(cycle),[ps,vs,bk]=await Promise.all([proposals().where('cicloId','==',cycle).get(),votes().get(),backupRef.get()]),live=ps.docs.map(d=>({id:d.id,...d.data()})),orders=new Set(live.map(orderOf)),liveVotes=vs.docs.map(d=>({id:d.id,...d.data()})).filter(v=>orders.has(voteOrder(v))),props=bk.exists?(bk.data().propostas||[]):live,allVotes=bk.exists?(bk.data().votos||[]):liveVotes;if(!bk.exists)await backupRef.set({nome_backup:props.length?`Nº ${Math.min(...props.map(orderOf))} a ${Math.max(...props.map(orderOf))}`:'Ciclo sem propostas',data_formatada:formatDate(new Date()),timestamp:new Date().toISOString(),cicloId:cycle,propostas:props,votos:allVotes,quantidadePropostas:props.length,quantidadeVotos:allVotes.length,criadoEm:ts(),criadoPor:state.nick});const leaders=leaderNicks(),approved=[],resolved=new Set(),resolvedOrders=new Set(),pending=[];props.forEach(p=>{const d=decision(p,votesFor(p,allVotes),leaders);if(d.key==='approved'){approved.push(p);resolved.add(idOf(p));resolvedOrders.add(orderOf(p));}else if(d.key==='rejected'){resolved.add(idOf(p));resolvedOrders.add(orderOf(p));}else pending.push(p);});for(const p of approved)await reward(p,cycle);const cs=await ref.get();if(approved.length&&cs.data()?.tratamentoEnviado!==true){const response=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'enviarTratamento',cicloId:cycle,dados:approved.map(p=>({ordem:p.ordem,autor:p.autor,categoria:p.tipo,titulo:p.titulo,conteudo:p.conteudo}))})});if(!response.ok)throw Error('A planilha de tratamento não confirmou o recebimento.');await ref.set({tratamentoEnviado:true,tratamentoEnviadoEm:ts()},{merge:true});}const b=state.db.batch();props.forEach(p=>{const r=proposals().doc(idOf(p));if(resolved.has(idOf(p)))b.delete(r);else b.set(r,{cicloId:next,carregadoDoCiclo:cycle,atualizadoEm:ts()},{merge:true});});vs.docs.forEach(d=>{if(resolvedOrders.has(voteOrder(d.data())))b.delete(d.ref);});await b.commit();await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,backupId:cycle},{merge:true});toast(`${resolved.size} resolvida(s) e ${pending.length} transferida(s) para o novo ciclo.`,'success','Fechamento concluído');}catch(e){console.error(e);await ref.set({status:'erro',erro:clean(e.message||e),erroEm:ts()},{merge:true}).catch(()=>{});throw e;}}
-  async function closeCycle(){if(state.busy)return;const isFriday=friday(),ok=await ask(isFriday?'Encerrar o ciclo atual?':'Fechamento fora da sexta-feira',isFriday?'O corte acontecerá agora. Novas propostas entrarão no próximo ciclo.':'Hoje não é sexta-feira. O fechamento será registrado como extraordinário.',isFriday?'Encerrar ciclo':'Fechamento extraordinário',!isFriday);if(!ok)return;state.busy=true;busy($('close-cycle'),true,'Fechando…');try{const r=await switchCycle();await processCycle(r.old,r.next);}catch(e){toast(e.message||'Fechamento interrompido. Use Retomar.','error');}finally{state.busy=false;busy($('close-cycle'),false);}}
-  function renderRecovery(){$('recovery-panel').hidden=!state.pending;if(state.pending)$('recovery-text').textContent=state.pending.status==='erro'?`O ciclo ${state.pending.id} parou com erro.`:`O ciclo ${state.pending.id} ainda está sendo processado.`;}
-  async function resume(){if(!state.pending||state.busy)return;if(!await ask('Retomar fechamento?','A Central continuará o processamento no ciclo pendente.','Retomar',false))return;state.busy=true;busy($('resume-cycle'),true,'Retomando…');try{await processCycle(state.pending.id,state.cycle.id);}catch(e){toast(e.message||'O ciclo continua pendente.','error');}finally{state.busy=false;busy($('resume-cycle'),false);}}
+    // Gatilhos de carregamento forçado
+    if(activeView === 'view-resultados') carregarResultados();
+    if(activeView === 'view-historico') carregarListaBackups();
+}
 
-  async function loadBackups(selected=''){const s=await backups().orderBy('timestamp','desc').get();state.backups=new Map(s.docs.map(d=>[d.id,{id:d.id,...d.data()}]));$('backup-select').innerHTML='<option value="" disabled selected>Selecione um backup</option>'+Array.from(state.backups.values()).map(b=>`<option value="${esc(b.id)}">${esc(b.nome_backup||b.data_formatada||b.id)} · ${esc(b.data_formatada||'')}</option>`).join('');if(selected&&state.backups.has(selected)){$('backup-select').value=selected;renderBackup(selected);}else{$('restore-panel').hidden=true;}}
-  function renderBackup(id){const b=state.backups.get(id);if(!b)return;$('restore-panel').hidden=false;const ps=b.propostas||[];$('history-grid').innerHTML=ps.length?ps.map(p=>card(p,{backup:id,votes:votesFor(p,b.votos||[])})).join(''):'<div class="empty"><i class="ti ti-file-off"></i><h3>Backup sem propostas</h3></div>';}
-  async function restore(){const id=$('backup-select').value,bk=state.backups.get(id);if(!bk||!await ask('Restaurar este backup?','As propostas e pareceres voltarão para o ciclo atual.','Restaurar',false))return;busy($('restore-backup'),true,'Restaurando…');try{const b=state.db.batch();(bk.propostas||[]).forEach(p=>{const data={...p};delete data.id;b.set(proposals().doc(idOf(p)),{...data,ordem:orderOf(p),ordemId:idOf(p),cicloId:state.cycle.id,restauradoDoBackup:id,restauradoEm:ts(),restauradoPor:state.nick},{merge:true});});(bk.votos||[]).forEach(v=>{const data={...v},doc=clean(v.id||`voto_${voteOrder(v)}_${clean(v.Nick||v.nick).replace(/[^a-zA-Z0-9_]/g,'')}`);delete data.id;b.set(votes().doc(doc),{...data,restauradoDoBackup:id},{merge:true});});await b.commit();toast('Backup restaurado no ciclo atual.','success');navigate('propostas');}catch(e){console.error(e);toast('Não foi possível restaurar.','error');}finally{busy($('restore-backup'),false);}}
+document.getElementById('nav-cadastro')?.addEventListener('click', (e) => switchPanel(e.currentTarget.id));
+document.getElementById('nav-resultados')?.addEventListener('click', (e) => switchPanel(e.currentTarget.id));
+document.getElementById('nav-historico')?.addEventListener('click', (e) => switchPanel(e.currentTarget.id));
 
-  function renderAccess(){$('access-list').innerHTML=state.access.length?state.access.slice().sort((a,b)=>a.localeCompare(b,'pt-BR')).map(n=>`<span class="access-chip"><span>${esc(n)}</span><button onclick="removeAccess('${encodeURIComponent(n)}')" title="Remover acesso"><i class="ti ti-x"></i></button></span>`).join(''):'<p class="empty compact" style="min-height:45px">Nenhum nickname adicional.</p>';}
-  async function addAccess(e){e.preventDefault();const input=$('access-nick'),m=state.members.find(x=>low(x.name||x.nick)===low(input.value));if(!m){toast('Selecione um nickname existente.','warning');return;}const nick=clean(m.name||m.nick);if(roleAllowed(m.cargo)||nickAllowed(nick)){toast('Esse membro já possui acesso.','info');return;}busy($('add-access'),true,'Adicionando…');try{await accessDoc().set({nicknames:firebase.firestore.FieldValue.arrayUnion(nick),atualizadoEm:ts(),atualizadoPor:state.nick,atualizadoPorUid:state.auth.currentUser.uid},{merge:true});input.value='';toast(`${nick} recebeu acesso completo.`,'success');}catch(e){toast('Não foi possível adicionar o acesso.','error');}finally{busy($('add-access'),false);}}
-  window.removeAccess=async encoded=>{const nick=decodeURIComponent(encoded);if(!await ask(`Remover o acesso de ${nick}?`,'O membro perderá o acesso se não possuir um cargo automático.','Remover'))return;try{await accessDoc().update({nicknames:firebase.firestore.FieldValue.arrayRemove(nick),atualizadoEm:ts(),atualizadoPor:state.nick,atualizadoPorUid:state.auth.currentUser.uid});toast('Acesso removido.','success');}catch(e){toast('Não foi possível remover.','error');}};
+// ==========================================
+// 3. ABA DE CADASTRO DE PROPOSTA
+// ==========================================
+document.getElementById('form-proposta')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById('btn-submit');
+    const originalBtnText = btnSubmit.innerHTML;
 
-  function navigate(name){document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==`view-${name}`);document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));const labels={propostas:'Central de Propostas',historico:'Histórico de Propostas',configuracoes:'Configurações da Central'};$('page-label').textContent=labels[name];location.hash=name;sidebar(false);document.querySelector('.stage').scrollTop=0;if(name==='historico')loadBackups().catch(()=>toast('Falha ao carregar backups.','error'));}
-  function sidebar(open){$('sidebar').classList.toggle('open',open);}
-  function themeVision(){const applyTheme=(value,save=false)=>{document.documentElement.dataset.theme=value;$('theme-button').innerHTML=`<i class="ti ${value==='dark'?'ti-sun':'ti-moon'}"></i>`;document.querySelector('meta[name=theme-color]').content=value==='dark'?'#0f0512':'#821f88';if(save)localStorage.setItem('PROPOSTAS_THEME',value);};applyTheme(localStorage.getItem('PROPOSTAS_THEME')==='light'?'light':'dark');$('theme-button').onclick=()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true);const applyVision=(scale,contrast,save=false)=>{document.documentElement.dataset.scale=scale;document.documentElement.dataset.contrast=contrast?'high':'standard';document.querySelectorAll('[data-scale]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scale===scale)));$('contrast-state').textContent=contrast?'Ativado':'Desativado';if(save)localStorage.setItem('PROPOSTAS_VISION',JSON.stringify({scale,contrast}));};let pref={};try{pref=JSON.parse(localStorage.getItem('PROPOSTAS_VISION')||'{}');}catch(_){}applyVision(pref.scale||'normal',pref.contrast===true);$('vision-button').onclick=()=>{$('vision-panel').hidden=!$('vision-panel').hidden;};document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>applyVision(b.dataset.scale,document.documentElement.dataset.contrast==='high',true));$('contrast-button').onclick=()=>applyVision(document.documentElement.dataset.scale,document.documentElement.dataset.contrast!=='high',true);$('vision-reset').onclick=()=>applyVision('normal',false,true);}
-  function bind(){document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));$('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open'));$('sidebar-overlay').onclick=()=>sidebar(false);$('open-launch').onclick=()=>$('launch-dialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());$('launch-form').onsubmit=saveManual;$('proposal-search').oninput=e=>{state.search=e.target.value;renderProposals();};$('close-cycle').onclick=closeCycle;$('resume-cycle').onclick=resume;$('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.','success')).catch(()=>toast('Falha ao atualizar.','error'));$('backup-select').onchange=e=>renderBackup(e.target.value);$('restore-backup').onclick=restore;$('access-form').onsubmit=addAccess;document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close();}));}
-  async function init(){try{bind();themeVision();await firebaseSession();if(!await loadIdentity())return;await ensureCycle();await Promise.all([loadPeople(),migrateLegacy()]);startLive();renderAccess();navigate(['propostas','historico','configuracoes'].includes(location.hash.slice(1))?location.hash.slice(1):'propostas');}catch(e){console.error(e);deny('Falha ao iniciar',e.message||'Não foi possível conectar ao Firebase.');}}
-  init();
-})();
+    const ordem = parseInt(document.getElementById('prop-ordem').value);
+    const autor = document.getElementById('prop-autor').value.trim();
+    const tipo = document.getElementById('prop-tipo').value;
+    const titulo = document.getElementById('prop-titulo').value.trim();
+    const conteudo = document.getElementById('prop-conteudo').value.trim();
+
+    try {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Lançando...';
+        
+        await db.collection("nexus_config").doc("Propostas").collection("lista_propostas").doc(ordem.toString()).set({
+            ordem: ordem, autor: autor, tipo: tipo, titulo: titulo, conteudo: conteudo,
+            data: new Date().toISOString()
+        });
+
+        showToast("Proposta registrada no banco ativo!", "success");
+        document.getElementById('form-proposta').reset();
+    } catch (error) {
+        showToast("Erro ao conectar no banco.", "error");
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = originalBtnText;
+    }
+});
+
+// ==========================================
+// 4. ABA DE MONITORAMENTO DE VOTOS
+// ==========================================
+async function fetchLideresNicks() {
+    if (globalLideresNicks.size > 0) return globalLideresNicks;
+    const usersSnap = await db.collection('users').where('cargo', 'in', ['Líder', 'Vice-Líder', 'Liderança']).get();
+    usersSnap.forEach(doc => {
+        const u = doc.data();
+        if (u.name) globalLideresNicks.add(u.name.toLowerCase());
+        if (u.nick) globalLideresNicks.add(u.nick.toLowerCase());
+    });
+    return globalLideresNicks;
+}
+
+async function carregarResultados() {
+    const grid = document.getElementById('resultados-grid');
+    grid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-circle-notch fa-spin text-3xl text-purple-500 mb-4"></i><p class="text-slate-400 font-bold uppercase tracking-widest">Coletando votos do conselho...</p></div>';
+
+    try {
+        const now = typeof dayjs !== 'undefined' ? dayjs() : null;
+        let lastTuesday = null;
+        if(now) {
+            let daysSinceTuesday = now.day() - 2;
+            if (daysSinceTuesday < 0) daysSinceTuesday += 7;
+            lastTuesday = now.subtract(daysSinceTuesday, 'day').startOf('day');
+        }
+
+        const propsSnap = await db.collection("nexus_config").doc("Propostas").collection("lista_propostas").orderBy("ordem", "desc").get();
+        const votosSnap = await db.collection("nexus_config").doc("Propostas").collection("votos_conselho").get();
+        const usersSnap = await db.collection('users').where('cargo', 'in', ['Estagiário(a)', 'Conselheiro(a)', 'Vice-Líder', 'Líder', 'Liderança']).get();
+        
+        // --- BUSCA DE LICENÇAS ATIVAS ---
+        const licencasSnap = await db.collection('licencas').where('status_licenca', '==', 'Ativa').get();
+        const licencasAtivas = new Set();
+        licencasSnap.forEach(doc => {
+            const data = doc.data();
+            if(data.nickname) licencasAtivas.add(data.nickname.toLowerCase());
+        });
+
+        const conselheiros = [];
+        globalLideresNicks.clear();
+        
+        usersSnap.forEach(doc => {
+            const u = doc.data();
+            const cargo = u.cargo || "";
+            const cargoLow = cargo.toLowerCase();
+            
+            // FILTRO RIGOROSO: Rejeita membros com "Ex-" ou "Ex " na frente do cargo
+            if (cargoLow.includes('ex-') || cargoLow.startsWith('ex ')) return;
+            
+            conselheiros.push(u);
+            if (cargo === 'Líder' || cargo === 'Vice-Líder' || cargo === 'Liderança') {
+                if (u.name) globalLideresNicks.add(u.name.toLowerCase());
+                if (u.nick) globalLideresNicks.add(u.nick.toLowerCase());
+            }
+        });
+
+        const propostas = [];
+        window.allVotesRaw = []; 
+        
+        propsSnap.forEach(doc => {
+            let dataProp = doc.data();
+            dataProp.isLeftover = (dataProp.data && lastTuesday) ? dayjs(dataProp.data).isBefore(lastTuesday) : false;
+            dataProp.id = doc.id;
+            propostas.push(dataProp);
+        });
+        votosSnap.forEach(doc => window.allVotesRaw.push({ id: doc.id, ...doc.data() }));
+
+        renderizarParticipacaoConselhoComDados(window.allVotesRaw, conselheiros, 'conselho-tracker-placeholder', licencasAtivas);
+        renderizarGradePropostas(propostas, window.allVotesRaw, globalLideresNicks, 'resultados-grid');
+
+    } catch (error) {
+        console.error(error);
+        grid.innerHTML = '<div class="col-span-full text-red-500 font-bold text-center py-10">Erro ao carregar dados do Firebase.</div>';
+    }
+}
+
+function renderizarParticipacaoConselhoComDados(votos, conselheiros, targetId, licencasAtivas = new Set()) {
+    const trackerDiv = document.getElementById(targetId);
+    if(!trackerDiv) return;
+    
+    const RobsonCargos = { 'Liderança': 1, 'Líder': 2, 'Vice-Líder': 3, 'Conselheiro(a)': 4, 'Estagiário(a)': 5 };
+    conselheiros.sort((a,b) => (RobsonCargos[a.cargo] || 99) - (RobsonCargos[b.cargo] || 99));
+
+    const votosPorAvaliador = {};
+    votos.forEach(v => {
+        const av = (v.Nick || v.nick || '').toLowerCase();
+        if(!votosPorAvaliador[av]) votosPorAvaliador[av] = { fav:0, rep:0, neu:0, total:0 };
+        
+        const vVer = (v.Veredito || v.veredito || '');
+        if(vVer.includes('Aprovada')) votosPorAvaliador[av].fav++;
+        else if(vVer.includes('Reprovada')) votosPorAvaliador[av].rep++;
+        else votosPorAvaliador[av].neu++;
+        
+        votosPorAvaliador[av].total++;
+    });
+
+    let html = '';
+    conselheiros.forEach(c => {
+        const nick = c.name || c.nick || 'Desconhecido';
+        const nickLower = nick.toLowerCase();
+        const cargo = c.cargo || 'Membro';
+        const stats = votosPorAvaliador[nickLower] || { fav:0, rep:0, neu:0, total:0 };
+        
+        const isAltoComando = (cargo === 'Líder' || cargo === 'Vice-Líder' || cargo === 'Liderança');
+        const isEmLicenca = licencasAtivas.has(nickLower);
+        const votou = stats.total > 0;
+        
+        let bgClass = '';
+        let statusHtml = '';
+
+        if (isEmLicenca) {
+            bgClass = 'bg-yellow-900/10 border-yellow-500/30 opacity-80';
+            statusHtml = `<p class="text-[10px] font-bold mt-0.5 text-yellow-500"><i class="fas fa-plane"></i> Licença Ativa</p>`;
+        } else if (votou) {
+            bgClass = 'bg-emerald-900/10 border-emerald-500/30';
+            statusHtml = `
+            <div class="flex items-center gap-2 mt-1 text-[10px] font-bold">
+                <span class="text-emerald-400"><i class="fas fa-check"></i> ${stats.fav}</span>
+                <span class="text-red-400"><i class="fas fa-times"></i> ${stats.rep}</span>
+                <span class="text-blue-400"><i class="fas fa-minus"></i> ${stats.neu}</span>
+            </div>`;
+        } else {
+            bgClass = isAltoComando ? 'bg-purple-900/10 border-purple-500/30' : 'bg-red-900/10 border-red-500/30';
+            statusHtml = isAltoComando 
+                ? `<p class="text-[10px] font-bold mt-0.5 text-purple-400 opacity-80"><i class="fas fa-eye"></i> Acompanhamento</p>` 
+                : `<p class="text-[10px] font-bold mt-0.5 text-red-500"><i class="fas fa-times"></i> Pendente</p> `;
+        }
+
+        html += `
+        <div class="border ${bgClass} rounded-xl p-3 flex items-center gap-3 shadow-inner transition hover:scale-105">
+            <img src="https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=2&gesture=sml&size=s&headonly=1" class="w-10 h-10 rounded-full bg-slate-900 drop-shadow-md">
+            <div class="overflow-hidden w-full">
+                <p class="text-xs font-black text-white truncate w-full leading-tight">${nick}</p>
+                <p class="text-[9px] text-slate-500 uppercase tracking-widest truncate w-full mt-0.5">${cargo}</p>
+                ${statusHtml}
+            </div>
+        </div>`;
+    });
+
+    trackerDiv.innerHTML = html || '<div class="col-span-full text-center text-slate-500 text-xs py-4">Nenhum conselheiro registrado.</div>';
+}
+
+function renderizarGradePropostas(listaProps, todosVotos, lideresNicks, gridId) {
+    const grid = document.getElementById(gridId);
+    if(!grid) return;
+    let html = '';
+    
+    // Verifica se o usuário logado tem permissão para usar o botão
+    const isUserLideranca = ['Líder', 'Vice-Líder', 'Liderança'].includes(currentUserRole);
+
+    listaProps.forEach(p => {
+        const votosDesta = todosVotos.filter(v => parseInt(v.Ordem || v.ordem) === parseInt(p.ordem || p.Ordem));
+        const votoDoLider = votosDesta.find(v => lideresNicks.has((v.Nick || v.nick || '').toLowerCase()));
+        
+        let bgStyle = 'bg-[#0b0f19] border-slate-800';
+        let badgeHtml = '<span class="text-[10px] uppercase tracking-widest bg-slate-900 text-slate-500 px-2 py-1 rounded border border-slate-800 font-bold">Sem Votos</span>';
+        
+        if (votosDesta.length > 0) {
+            if (votoDoLider) {
+                const vVeredito = votoDoLider.Veredito || votoDoLider.veredito || '';
+                if (vVeredito.includes('Aprovada')) {
+                    bgStyle = 'bg-emerald-900/10 border-emerald-500/30';
+                    badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-emerald-900/50 text-emerald-400 px-2 py-1 rounded border border-emerald-500 font-bold"><i class="fas fa-crown mr-1"></i> Aprovada Liderança</span>`;
+                } else {
+                    bgStyle = 'bg-red-900/10 border-red-500/30';
+                    badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-red-900/50 text-red-400 px-2 py-1 rounded border border-red-500 font-bold"><i class="fas fa-crown mr-1"></i> Reprovada Liderança</span>`;
+                }
+            } else {
+                let contagem = { aprovada: 0, reprovada: 0, tutela: 0, reuniao: 0, lideranca: 0, autoria: 0 };
+                
+                votosDesta.forEach(v => { 
+                    const vVer = (v.Veredito || v.veredito || '').toLowerCase();
+                    if (vVer.includes('aprovada')) contagem.aprovada++; 
+                    else if (vVer.includes('reprovada')) contagem.reprovada++; 
+                    else if (vVer.includes('tutela')) contagem.tutela++;
+                    else if (vVer.includes('reunião') || vVer.includes('reuniao')) contagem.reuniao++;
+                    else if (vVer.includes('liderança') || vVer.includes('lideranca')) contagem.lideranca++;
+                    else if (vVer.includes('autoria')) contagem.autoria++;
+                });
+
+                let maxVotos = 0;
+                let vencedores = [];
+                for (const [tipo, qtd] of Object.entries(contagem)) {
+                    if (qtd > maxVotos) {
+                        maxVotos = qtd;
+                        vencedores = [tipo];
+                    } else if (qtd === maxVotos && qtd > 0) {
+                        vencedores.push(tipo);
+                    }
+                }
+
+                if (vencedores.length > 1 || vencedores.length === 0) {
+                    bgStyle = 'bg-blue-900/10 border-blue-500/30';
+                    badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-blue-900/50 text-blue-400 px-2 py-1 rounded border border-blue-500 font-bold"><i class="fas fa-balance-scale mr-1"></i> Empate Técnico</span>`;
+                } else {
+                    const maioria = vencedores[0];
+                    if (maioria === 'aprovada') {
+                        bgStyle = 'bg-emerald-900/10 border-emerald-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-emerald-900/50 text-emerald-400 px-2 py-1 rounded border border-emerald-500 font-bold"><i class="fas fa-check-circle mr-1"></i> Maioria Aprovou</span>`;
+                    } else if (maioria === 'reprovada') {
+                        bgStyle = 'bg-red-900/10 border-red-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-red-900/50 text-red-400 px-2 py-1 rounded border border-red-500 font-bold"><i class="fas fa-times-circle mr-1"></i> Maioria Reprovou</span>`;
+                    } else if (maioria === 'tutela') {
+                        bgStyle = 'bg-yellow-900/10 border-yellow-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-yellow-900/50 text-yellow-400 px-2 py-1 rounded border border-yellow-500 font-bold"><i class="fas fa-shield-alt mr-1"></i> Maioria Tutela</span>`;
+                    } else if (maioria === 'reuniao') {
+                        bgStyle = 'bg-purple-900/10 border-purple-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-purple-900/50 text-purple-400 px-2 py-1 rounded border border-purple-500 font-bold"><i class="fas fa-users mr-1"></i> Maioria Reunião</span>`;
+                    } else if (maioria === 'lideranca') {
+                        bgStyle = 'bg-pink-900/10 border-pink-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-pink-900/50 text-pink-400 px-2 py-1 rounded border border-pink-500 font-bold"><i class="fas fa-arrow-up mr-1"></i> Maioria Liderança</span>`;
+                    } else if (maioria === 'autoria') {
+                        bgStyle = 'bg-orange-900/10 border-orange-500/30';
+                        badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-orange-900/50 text-orange-400 px-2 py-1 rounded border border-orange-500 font-bold"><i class="fas fa-pen-nib mr-1"></i> Maioria Autoria</span>`;
+                    }
+                }
+                
+                if (p.isLeftover && (vencedores.length > 1 || vencedores.length === 0 || !['aprovada', 'reprovada'].includes(vencedores[0]))) {
+                    bgStyle = 'bg-blue-900/10 border-blue-500/30';
+                    badgeHtml = `<span class="text-[10px] uppercase tracking-widest bg-blue-900/50 text-blue-400 px-2 py-1 rounded border border-blue-500 font-bold"><i class="fas fa-clock mr-1"></i> Pendente Liderança</span>`;
+                }
+            }
+        }
+
+        // BOTAO DE FORÇAR RESULTADO PARA A LIDERANÇA
+        let btnForcar = '';
+        if (isUserLideranca) {
+            const backupStr = gridId === 'historico-grid' ? `'${document.getElementById('hist-backup-select').value}'` : 'null';
+            btnForcar = `<button onclick="abrirModalForcarVoto(${p.ordem || p.Ordem}, ${backupStr})" title="Forçar Veredito da Liderança" class="text-[10px] bg-fuchsia-900/50 text-fuchsia-400 px-2 py-1 rounded border border-fuchsia-500 hover:bg-fuchsia-500 hover:text-white transition shadow"><i class="fas fa-gavel"></i></button>`;
+        }
+
+        html += `
+        <div class="glass-panel border ${bgStyle} rounded-2xl p-5 shadow-lg flex flex-col relative transition hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-[#05070c] text-purple-400 px-3 py-1.5 rounded-lg text-xs font-black border border-slate-800">Nº ${p.ordem || p.Ordem}</span>
+                    <div class="overflow-hidden">
+                        <span class="text-[8px] uppercase tracking-wider text-purple-400 bg-purple-900/30 px-1.5 py-0.5 rounded border border-purple-500/30">${p.tipo || p.Categoria || 'Proposta'}</span>
+                        <h4 class="font-black text-white text-sm leading-none truncate max-w-[150px] mt-1" title="${p.titulo || p.Titulo}">${p.titulo || p.Titulo}</h4>
+                        <p class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 truncate">Por ${p.autor || p.Autor}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    ${badgeHtml}
+                    ${btnForcar}
+                </div>
+            </div>
+
+            <div class="my-2 text-[11px] text-slate-400 line-clamp-2 bg-black/20 p-2 rounded-lg border border-slate-800/50 flex-1 relative group cursor-help">
+                <b class="text-slate-300">Síntese:</b> <span class="italic">${(p.conteudo || p.Conteudo || 'Nenhum conteúdo detalhado fornecido.').replace(/\\n/g, '\n')}</span>
+                <div class="hidden group-hover:block absolute z-10 bg-slate-900 border border-slate-700 p-2 rounded shadow-2xl min-w-[200px] -top-8 left-0 whitespace-pre-line">
+                    ${(p.conteudo || p.Conteudo || 'Sem síntese').replace(/\\n/g, '\n')}
+                </div>
+            </div>
+
+            <button onclick='abrirModalVotos(${JSON.stringify(votosDesta).replace(/'/g, "&#39;")})' class="w-full bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white py-2 rounded-xl text-xs font-bold uppercase transition mt-auto">
+                <i class="fas fa-comments mr-1"></i> Ler ${votosDesta.length} Pareceres
+            </button>
+        </div>`;
+    });
+
+    if (listaProps.length === 0) html = '<div class="col-span-full text-slate-500 font-bold text-center py-10">Nenhuma proposta encontrada.</div>';
+    grid.innerHTML = html;
+}
+
+window.abrirModalVotos = function(votos) {
+    const container = document.getElementById('modal-votos-conteudo');
+    if(votos.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-6">Ninguém votou ainda.</p>';
+    } else {
+        let html = '';
+        votos.forEach(v => {
+            let color = "text-slate-400";
+            const vVer = (v.Veredito || v.veredito || '').toLowerCase();
+            
+            if(vVer.includes('aprovada')) color = "text-emerald-400";
+            else if(vVer.includes('reprovada')) color = "text-red-400";
+            else if(vVer.includes('tutela')) color = "text-yellow-400";
+            else if(vVer.includes('reunião') || vVer.includes('reuniao')) color = "text-purple-400";
+            else if(vVer.includes('liderança') || vVer.includes('lideranca')) color = "text-pink-400";
+            else if(vVer.includes('autoria')) color = "text-orange-400";
+
+            html += `
+            <div class="bg-[#05070c] border border-slate-800 rounded-xl p-4 flex flex-col mb-3 shadow-inner">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-black text-white">${v.Nick || v.nick}</span>
+                    <span class="text-[10px] font-bold ${color} bg-slate-800 px-2 py-1 rounded border border-slate-700">${v.Veredito || v.veredito}</span>
+                </div>
+                <p class="text-xs text-slate-400 italic whitespace-pre-line">"${(v.Comentario || v.comentario || '').replace(/\\n/g, '\n')}"</p>
+            </div>`;
+        });
+        container.innerHTML = html;
+    }
+    document.getElementById('modal-leitura-votos').classList.remove('hidden');
+}
+window.fecharModalVotos = () => document.getElementById('modal-leitura-votos').classList.add('hidden');
+
+// ==========================================
+// FUNÇÕES DO QUADRO: FORÇAR DECISÃO
+// ==========================================
+window.abrirModalForcarVoto = function(ordem, backupId = null) {
+    let modal = document.getElementById('modal-forcar-voto');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-forcar-voto';
+        modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden';
+        modal.innerHTML = `
+            <div class="bg-[#0b0f19] border border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md">
+                <h2 class="text-white font-black text-lg mb-4"><i class="fas fa-gavel text-fuchsia-500 mr-2"></i> Veredito da Liderança</h2>
+                <input type="hidden" id="forcar-ordem">
+                <input type="hidden" id="forcar-backup">
+                
+                <div class="mb-4">
+                    <label class="block text-slate-400 text-xs font-bold mb-2">Decisão Soberana</label>
+                    <select id="forcar-veredito" class="w-full bg-[#05070c] border border-slate-700 text-white text-sm rounded-xl p-3 focus:border-fuchsia-500 outline-none transition">
+                        <option value="Aprovada">Aprovada</option>
+                        <option value="Reprovada">Reprovada</option>
+                    </select>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-slate-400 text-xs font-bold mb-2">Comentário / Justificativa</label>
+                    <textarea id="forcar-comentario" rows="3" class="w-full bg-[#05070c] border border-slate-700 text-white text-sm rounded-xl p-3 focus:border-fuchsia-500 outline-none transition" placeholder="Motivação da decisão..."></textarea>
+                </div>
+                
+                <div class="flex justify-end gap-3">
+                    <button onclick="fecharModalForcarVoto()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-xl text-xs uppercase transition">Cancelar</button>
+                    <button onclick="salvarVotoForcado()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-2 px-4 rounded-xl text-xs uppercase transition shadow-lg"><i class="fas fa-save mr-1"></i> Decretar</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    document.getElementById('forcar-ordem').value = ordem;
+    document.getElementById('forcar-backup').value = backupId || '';
+    document.getElementById('forcar-veredito').value = 'Aprovada';
+    document.getElementById('forcar-comentario').value = 'Decisão final decretada via painel de Liderança.';
+    
+    modal.classList.remove('hidden');
+};
+
+window.fecharModalForcarVoto = function() {
+    const modal = document.getElementById('modal-forcar-voto');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.salvarVotoForcado = async function() {
+    const ordem = document.getElementById('forcar-ordem').value;
+    const backupId = document.getElementById('forcar-backup').value;
+    const veredito = document.getElementById('forcar-veredito').value;
+    const comentario = document.getElementById('forcar-comentario').value.trim();
+
+    if (!comentario) {
+        showToast("O comentário é obrigatório.", "error");
+        return;
+    }
+
+    const safeNick = currentUserNick.replace(/[^a-zA-Z0-9_]/g, '');
+    const votoId = `voto_${ordem}_${safeNick}`;
+    const novoVoto = {
+        Nick: currentUserNick,
+        Ordem: parseInt(ordem),
+        Comentario: comentario,
+        Veredito: veredito,
+        Timestamp: new Date().toISOString()
+    };
+
+    const t = showToast("Forçando veredito...", "loading");
+    fecharModalForcarVoto();
+
+    try {
+        if (backupId) {
+            const docRef = db.collection("nexus_config").doc("backup_respostas").collection("historico").doc(backupId);
+            const doc = await docRef.get();
+            if (doc.exists) {
+                const data = doc.data();
+                let votos = data.votos || [];
+                // Evita duplicar voto da liderança na mesma proposta
+                votos = votos.filter(v => !(parseInt(v.Ordem) === parseInt(ordem) && (v.Nick === currentUserNick || v.nick === currentUserNick)));
+                votos.push(novoVoto);
+                await docRef.update({ votos: votos });
+                
+                t.remove();
+                showToast("Resultado alterado no cofre de backup!", "success");
+                
+                if (todosOsBackups[backupId]) { todosOsBackups[backupId].votos = votos; }
+                document.getElementById('hist-backup-select').dispatchEvent(new Event('change'));
+            }
+        } else {
+            await db.collection("nexus_config").doc("Propostas").collection("votos_conselho").doc(votoId).set({
+                ...novoVoto,
+                Timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            t.remove();
+            showToast("Resultado ativo alterado com sucesso!", "success");
+            carregarResultados();
+        }
+    } catch (err) {
+        console.error(err);
+        t.remove();
+        showToast("Erro ao forçar decisão.", "error");
+    }
+};
+
+// ==========================================
+// 5. ABA 3: CRIAÇÃO DO BACKUP E INTEGRAÇÃO DE HISTÓRICO
+// ==========================================
+window.encerrarCicloEArquivar = async () => {
+    const confirmation = confirm("CONFIRMAR OPERAÇÃO DE ENCERRAMENTO?\n\n1. As propostas RESOLVIDAS serão apagadas da tela.\n2. O Backup completo será salvo.\n3. As aprovadas vão para a planilha Tratamento e atualizarão o perfil/histórico dos autores.\n4. Os EMPATES / PENDENTES continuarão na tela.");
+    if (!confirmation) return;
+
+    const btn = document.getElementById('btn-arquivar');
+    const originalText = btn.innerHTML;
+    const t = showToast('Gerando Backup e Distribuindo Recompensas...', 'loading');
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-sync fa-spin"></i> Processando...';
+
+        const propsSnap = await db.collection("nexus_config").doc("Propostas").collection("lista_propostas").get();
+        const votosSnap = await db.collection("nexus_config").doc("Propostas").collection("votos_conselho").get();
+        const usersSnap = await db.collection('users').where('cargo', 'in', ['Líder', 'Vice-Líder', 'Liderança']).get();
+
+        const lideresNicks = new Set();
+        usersSnap.forEach(doc => {
+            const u = doc.data();
+            if (u.name) lideresNicks.add(u.name.toLowerCase());
+            if (u.nick) lideresNicks.add(u.nick.toLowerCase());
+        });
+
+        const propostas = []; const votos = [];
+        propsSnap.forEach(doc => propostas.push({ id: doc.id, ...doc.data() }));
+        votosSnap.forEach(doc => votos.push({ id: doc.id, ...doc.data() }));
+
+        if (propostas.length === 0 && votos.length === 0) {
+            t.remove(); showToast('O sistema já está vazio.', 'error'); return;
+        }
+
+        const ordens = propostas.map(p => parseInt(p.ordem)).filter(n => !isNaN(n));
+        let nomeBackup = "Backup Geral";
+        if (ordens.length > 0) {
+            const minOrdem = Math.min(...ordens);
+            const maxOrdem = Math.max(...ordens);
+            nomeBackup = minOrdem === maxOrdem ? `Nº ${minOrdem}` : `Nº ${minOrdem} a ${maxOrdem}`;
+        }
+
+        const dataAtual = new Date();
+        const docId = dataAtual.getTime().toString();
+        
+        // Salvamento do Backup
+        await db.collection("nexus_config").doc("backup_respostas").collection("historico").doc(docId).set({
+            nome_backup: nomeBackup,
+            data_formatada: formatDateFull(dataAtual),
+            timestamp: dataAtual.toISOString(),
+            propostas: propostas,
+            votos: votos
+        });
+
+        const aprovadasParaTratamento = [];
+        const propostasParaDeletarIds = [];
+
+        propostas.forEach(p => {
+            const votosDesta = votos.filter(v => parseInt(v.Ordem) === parseInt(p.ordem));
+            const votoDoLider = votosDesta.find(v => lideresNicks.has((v.Nick || '').toLowerCase()));
+
+            if (votoDoLider) {
+                propostasParaDeletarIds.push(p.id);
+                if (votoDoLider.Veredito.includes('Aprovada')) {
+                    aprovadasParaTratamento.push({ ordem: p.ordem, autor: p.autor, categoria: p.tipo, titulo: p.titulo, conteudo: p.conteudo });
+                }
+            } else if (votosDesta.length > 0) {
+                let contagem = { aprovada: 0, reprovada: 0, tutela: 0, reuniao: 0, lideranca: 0, autoria: 0 };
+                
+                votosDesta.forEach(v => { 
+                    const vVer = (v.Veredito || v.veredito || '').toLowerCase();
+                    if (vVer.includes('aprovada')) contagem.aprovada++; 
+                    else if (vVer.includes('reprovada')) contagem.reprovada++; 
+                    else if (vVer.includes('tutela')) contagem.tutela++;
+                    else if (vVer.includes('reunião') || vVer.includes('reuniao')) contagem.reuniao++;
+                    else if (vVer.includes('liderança') || vVer.includes('lideranca')) contagem.lideranca++;
+                    else if (vVer.includes('autoria')) contagem.autoria++;
+                });
+
+                let maxVotos = 0;
+                let vencedores = [];
+                for (const [tipo, qtd] of Object.entries(contagem)) {
+                    if (qtd > maxVotos) { maxVotos = qtd; vencedores = [tipo]; } 
+                    else if (qtd === maxVotos && qtd > 0) { vencedores.push(tipo); }
+                }
+
+                if (vencedores.length === 1) {
+                    const maioria = vencedores[0];
+                    if (maioria === 'aprovada') {
+                        aprovadasParaTratamento.push({ ordem: p.ordem, autor: p.autor, categoria: p.tipo, titulo: p.titulo, conteudo: p.conteudo });
+                        propostasParaDeletarIds.push(p.id); 
+                    } else if (maioria === 'reprovada') {
+                        propostasParaDeletarIds.push(p.id); 
+                    }
+                }
+            }
+        });
+
+        // -----------------------------------------------------
+        // INJEÇÃO DE MULTINICK / HISTÓRICO DAS APROVADAS
+        // -----------------------------------------------------
+        if (aprovadasParaTratamento.length > 0) {
+            for (const p of aprovadasParaTratamento) {
+                const listaNicknames = (p.autor || '').split('/').map(n => n.trim()).filter(n => n !== "");
+                
+                for (const nickname of listaNicknames) {
+                    try {
+                        let userRefDoc = null;
+                        const userQuery = await db.collection('users').where('name', '==', nickname).get();
+                        
+                        if (!userQuery.empty) { userRefDoc = userQuery.docs[0]; }
+                        else {
+                            const userQueryNick = await db.collection('users').where('nick', '==', nickname).get();
+                            if (!userQueryNick.empty) userRefDoc = userQueryNick.docs[0];
+                        }
+
+                        if (userRefDoc) {
+                            const userId = userRefDoc.id;
+                            const userRef = db.collection('users').doc(userId);
+
+                            await userRef.update({ propostas: firebase.firestore.FieldValue.increment(1) });
+
+                            const sintese = p.conteudo || '';
+                            const conteudoHTML = `<b>Tipo:</b> ${p.categoria || 'Proposta'}<br><b>Ordem:</b> ${p.ordem}<br><b>Título:</b> ${p.titulo}<br><br><b>Síntese:</b> ${sintese}`;
+
+                            await userRef.collection('historico').add({
+                                titulo: 'Proposta Aprovada pelo Conselho',
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                data: formatDateFull(new Date()),
+                                autor: currentUserNick,
+                                conteudo: conteudoHTML,
+                                dados: { 
+                                    departamento: 'Companhia', 
+                                    tipo: p.categoria || 'Proposta', 
+                                    ordem: p.ordem, 
+                                    titulo: p.titulo, 
+                                    sintese: sintese,
+                                    parceiros: p.autor 
+                                }
+                            });
+
+                            await db.collection('notificacoes').add({
+                                tipo: 'companhia_ouvidoria',
+                                dados: { nomeUsuario: nickname, tipoProposta: p.categoria || 'Proposta' },
+                                link: `/membros/${encodeURIComponent(nickname)}`,
+                                userId: userId,
+                                lida: false,
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                    } catch (error) {
+                        console.error(`Erro ao salvar histórico para o autor ${nickname}:`, error);
+                    }
+                }
+            }
+
+            // Dispara para o Sheets
+            fetch(APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'enviarTratamento', dados: aprovadasParaTratamento }),
+                headers: { "Content-Type": "text/plain;charset=utf-8" }
+            }).catch(e => console.error("Falha ao enviar webhook AppScript:", e));
+        }
+
+        // Limpeza do Painel
+        if (propostasParaDeletarIds.length > 0) {
+            const batch = db.batch();
+            propsSnap.docs.forEach(doc => {
+                if (propostasParaDeletarIds.includes(doc.id)) batch.delete(doc.ref);
+            });
+            votosSnap.docs.forEach(doc => {
+                const pOrdem = doc.data().Ordem;
+                if (propostasParaDeletarIds.includes(pOrdem.toString())) batch.delete(doc.ref);
+            });
+            await batch.commit();
+        }
+
+        t.remove();
+        showToast(`Backup Concluído! ${propostasParaDeletarIds.length} propostas foram limpas e os perfis atualizados.`, 'success');
+        carregarResultados(); 
+
+    } catch (error) {
+        t.remove(); showToast('Erro Crítico ao processar.', 'error'); console.error(error);
+    } finally {
+        btn.disabled = false; btn.innerHTML = originalText;
+    }
+};
+
+// ==========================================
+// 6. HISTÓRICO COFRE & SISTEMA DE REVERSÃO
+// ==========================================
+async function carregarListaBackups() {
+    const select = document.getElementById('hist-backup-select');
+    if (!select) return;
+
+    select.innerHTML = '<option value="" disabled selected>Buscando no cofre...</option>';
+
+    try {
+        const snap = await db.collection("nexus_config").doc("backup_respostas").collection("historico").orderBy('timestamp', 'desc').get();
+        
+        if (snap.empty) { 
+            select.innerHTML = '<option value="" disabled selected>Nenhum backup encontrado</option>'; 
+            return; 
+        }
+
+        let options = '<option value="" disabled selected>Selecione um backup para visualizar ou restaurar</option>';
+        todosOsBackups = {}; 
+        
+        snap.forEach(doc => {
+            const data = doc.data();
+            todosOsBackups[doc.id] = data; 
+            const nomeExibicao = data.nome_backup || data.data_formatada || "Lote de Propostas";
+            options += `<option value="${doc.id}">${nomeExibicao} (${data.data_formatada || ''})</option>`;
+        });
+        
+        select.innerHTML = options;
+
+        const gridHistorico = document.getElementById('historico-grid');
+        if (gridHistorico && !document.getElementById('btn-restaurar-container')) {
+            const containerBotao = document.createElement('div');
+            containerBotao.id = 'btn-restaurar-container';
+            containerBotao.className = 'col-span-full mb-4 hidden';
+            containerBotao.innerHTML = `
+                <div class="glass-panel p-5 rounded-2xl border border-blue-500/30 bg-blue-900/10 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
+                    <div class="text-center sm:text-left">
+                        <h4 class="text-white font-black text-sm uppercase tracking-wide"><i class="fas fa-undo-alt mr-2 text-blue-400"></i> Restaurar Lote por Movimentação de Coleção</h4>
+                        <p class="text-slate-400 text-xs mt-1">Deseja mover as propostas e pareceres arquivados desse documento de volta para as tabelas ativas?</p>
+                    </div>
+                    <button onclick="restaurarBackupAtivo()" id="btn-restaurar-acao" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors shadow-lg flex items-center gap-2">
+                        Mover para o Painel Ativo <i class="fas fa-exchange-alt"></i>
+                    </button>
+                </div>`;
+            gridHistorico.parentNode.insertBefore(containerBotao, gridHistorico);
+        }
+
+    } catch (e) {
+        console.error("Erro ao puxar histórico:", e);
+        select.innerHTML = '<option value="" disabled selected>Erro de conexão com o banco.</option>'; 
+    }
+}
+
+document.getElementById('hist-backup-select')?.addEventListener('change', async () => {
+    const backupId = document.getElementById('hist-backup-select').value;
+    if(!backupId) return;
+    const data = todosOsBackups[backupId];
+    toggleDisplay('btn-restaurar-container', true);
+    
+    // Assegura que o cargo/badge 'Aprovada Liderança' será lido corretamente no Histórico
+    const lideres = await fetchLideresNicks(); 
+    renderizarGradePropostas(data.propostas, data.votos, lideres, 'historico-grid');
+});
+
+window.restaurarBackupAtivo = async () => {
+    const backupId = document.getElementById('hist-backup-select').value;
+    if (!backupId || !todosOsBackups[backupId]) { showToast("Selecione um lote primeiro.", "error"); return; }
+    
+    const confirmation = confirm("⚠️ ATENÇÃO - MOVIMENTAÇÃO DE DADOS!\n\nO sistema vai ler os dados guardados dentro deste documento do histórico e vai reinjetá-los diretamente nas coleções de propostas e pareceres ativos.\n\nDeseja realizar essa movimentação?");
+    if (!confirmation) return;
+
+    const btn = document.getElementById('btn-restaurar-acao');
+    const originalText = btn.innerHTML;
+    const t = showToast("Movendo documentos entre coleções...", "loading");
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-sync fa-spin"></i> Movendo dados...';
+
+        const lote = todosOsBackups[backupId];
+        const propostasParaRestaurar = lote.propostas || [];
+        const votosParaRestaurar = lote.votos || [];
+
+        const batch = db.batch();
+
+        propostasParaRestaurar.forEach(p => {
+            const ordemStr = (p.ordem || p.Ordem || '').toString();
+            if(ordemStr) {
+                const ref = db.collection("nexus_config").doc("Propostas").collection("lista_propostas").doc(ordemStr);
+                batch.set(ref, {
+                    ordem: p.ordem || p.Ordem,
+                    autor: p.autor || p.Autor || '',
+                    tipo: p.tipo || p.Categoria || 'Sugestão',
+                    titulo: p.titulo || p.Titulo || '',
+                    conteudo: p.conteudo || p.Conteudo || '',
+                    data: p.data || p.Data || new Date().toISOString()
+                }, { merge: true });
+            }
+        });
+
+        votosParaRestaurar.forEach(v => {
+            const ordemVoto = v.Ordem || v.ordem;
+            const nickVoto = v.Nick || v.nick || '';
+            const safeNick = nickVoto.replace(/[^a-zA-Z0-9_]/g, '');
+            
+            if (ordemVoto && safeNick) {
+                const ref = db.collection("nexus_config").doc("Propostas").collection("votos_conselho").doc(`voto_${ordemVoto}_${safeNick}`);
+                batch.set(ref, {
+                    Nick: nickVoto,
+                    Ordem: parseInt(ordemVoto),
+                    Comentario: v.Comentario || v.comentario || '',
+                    Veredito: v.Veredito || v.veredito || 'Pendente',
+                    Timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+        });
+
+        await batch.commit();
+        t.remove();
+        showToast("Movimentação concluída! Dados reativados na base.", "success");
+        
+        document.getElementById('nav-resultados').click();
+
+    } catch (err) {
+        console.error("Erro na movimentação interna:", err);
+        t.remove();
+        showToast("Falha ao mover documentos.", "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+};
