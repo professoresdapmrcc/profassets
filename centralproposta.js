@@ -39,7 +39,7 @@
     if(direct&&!explicitlyGuest)return direct;
 
     try{
-      const response=await fetch('/forum',{credentials:'same-origin',cache:'no-store'});
+      const response=await fetch('/',{credentials:'same-origin',cache:'no-store'});
       if(!response.ok)throw Error(`HTTP ${response.status}`);
       const html=await response.text();
       const patterns=[
