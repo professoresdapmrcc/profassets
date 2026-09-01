@@ -8,7 +8,8 @@
   
   // EDITAR AQUI: Coloque os nicks exatos do seu fórum para testar
   const MEU_NICK = "Sr.Gabriel."; // Seu nick para ter acesso de Liderança no painel
-  const NICK_PUNIDO = "Sr.Gabriel."; // Nick que vai RECEBER a MP de advertência (pode ser o seu mesmo)
+  const NICK_PUNIDO = "Sr.Gabriel."; // Nick que vai RECEBER a MP de advertência (pode ser o seu mesmo) 
+  const NICK_PUNIDO = "Pegas"; // Nick que vai RECEBER a MP de advertência (pode ser o seu mesmo)
 
   // Banco de Dados Fictício (Em Memória)
   const state = {
