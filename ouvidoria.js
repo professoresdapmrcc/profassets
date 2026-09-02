@@ -1019,10 +1019,82 @@ ${generateProposalBody(data)}
                 return credential.user;
             }
 
+            function saoPauloParts(value = new Date()) {
+                return new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'America/Sao_Paulo',
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+                }).formatToParts(value).reduce((result, part) => {
+                    if (part.type !== 'literal') result[part.type] = Number(part.value);
+                    return result;
+                }, {});
+            }
+
+            function saoPauloMidnight(year, month, day) {
+                const desired = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+                let candidate = new Date(desired + 3 * 60 * 60 * 1000);
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    const parts = saoPauloParts(candidate);
+                    const represented = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, 0);
+                    candidate = new Date(candidate.getTime() + (desired - represented));
+                }
+                candidate.setUTCMilliseconds(0);
+                return candidate;
+            }
+
+            function getProposalWeek(value = new Date()) {
+                const parts = saoPauloParts(value);
+                const calendar = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+                const daysSinceFriday = (calendar.getUTCDay() - 5 + 7) % 7;
+                calendar.setUTCDate(calendar.getUTCDate() - daysSinceFriday);
+                const year = calendar.getUTCFullYear();
+                const month = calendar.getUTCMonth() + 1;
+                const day = calendar.getUTCDate();
+                const pad = number => String(number).padStart(2, '0');
+                const start = saoPauloMidnight(year, month, day);
+                const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+                return { id: `semana_${year}-${pad(month)}-${pad(day)}`, start, end };
+            }
+
+            function getCycleWeekId(cycle) {
+                const source = cycle?.semanaEnvioInicio?.toDate
+                    ? cycle.semanaEnvioInicio.toDate()
+                    : (cycle?.semanaEnvioInicio || cycle?.inicioIso || new Date());
+                return cycle?.semanaEnvioId || getProposalWeek(new Date(source)).id;
+            }
+
+            function proposalWeekFields(week) {
+                return {
+                    semanaEnvioId: week.id,
+                    semanaEnvioInicio: firebase.firestore.Timestamp.fromDate(week.start),
+                    semanaEnvioFim: firebase.firestore.Timestamp.fromDate(week.end)
+                };
+            }
+
+            async function getCurrentProposalCycle() {
+                const snapshot = await proposalDb
+                    .collection('nexus_config')
+                    .doc('Propostas')
+                    .collection('configuracoes')
+                    .doc('ciclo_atual')
+                    .get();
+
+                const cycle = snapshot.exists ? snapshot.data() : null;
+                if (!cycle || cycle.status !== 'aberto' || !cycle.id) {
+                    throw new Error('A Central ainda não abriu o ciclo atual de propostas.');
+                }
+                return cycle;
+            }
+
             async function saveProposalToFirebase(data, sendLeadership) {
                 if (!proposalDb) throw new Error('O Firebase não foi inicializado.');
 
                 const firebaseUser = await ensureAnonymousFirebaseSession();
+                const currentCycle = await getCurrentProposalCycle();
+                const proposalWeek = getProposalWeek();
+                const cycleId = getCycleWeekId(currentCycle) === proposalWeek.id
+                    ? currentCycle.id
+                    : proposalWeek.id;
                 const proposalId = String(data.numero);
                 const proposalRef = proposalDb
                     .collection('nexus_config')
@@ -1030,8 +1102,7 @@ ${generateProposalBody(data)}
                     .collection('lista_propostas')
                     .doc(proposalId);
 
-                try {
-                    await proposalRef.set({
+                const proposalPayload = {
                         ordem: Number(data.numero),
                         ordemId: proposalId,
                         autor: data.autor,
@@ -1042,10 +1113,28 @@ ${generateProposalBody(data)}
                         data: new Date().toISOString(),
                         origem: 'forum-ouvidoria',
                         enviadoLideranca: sendLeadership === true,
+                        cicloId,
+                        ...proposalWeekFields(proposalWeek),
                         criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                };
+
+                try {
+                    await proposalRef.set(proposalPayload);
                 } catch (error) {
                     if (error?.code === 'permission-denied') {
+                        const refreshedCycle = await getCurrentProposalCycle();
+                        const refreshedWeek = getProposalWeek();
+                        const refreshedDestination = getCycleWeekId(refreshedCycle) === refreshedWeek.id
+                            ? refreshedCycle.id
+                            : refreshedWeek.id;
+                        if (refreshedDestination !== cycleId || refreshedWeek.id !== proposalWeek.id) {
+                            await proposalRef.set({
+                                ...proposalPayload,
+                                cicloId: refreshedDestination,
+                                ...proposalWeekFields(refreshedWeek)
+                            });
+                            return;
+                        }
                         throw new Error('O número já existe ou as regras do Firebase ainda não foram publicadas.');
                     }
                     throw error;
