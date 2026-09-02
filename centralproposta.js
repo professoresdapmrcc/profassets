@@ -129,7 +129,61 @@
   }
   function friday(){ return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',weekday:'long'}).format(new Date()).toLowerCase().startsWith('sexta'); }
   function cycleId(){ return `ciclo_${Date.now()}_${clean(state.auth.currentUser?.uid).slice(0,6)||'forum'}`; }
-  function nextFriday(){ const d=new Date(); let n=(5-d.getDay()+7)%7; if(!n) n=7; d.setDate(d.getDate()+n); d.setHours(23,59,59,999); return d.toISOString(); }
+
+  function saoPauloParts(value=new Date()){
+      const date=value instanceof Date ? value : (typeof value?.toDate==='function' ? value.toDate() : new Date(value));
+      const parts=new Intl.DateTimeFormat('en-CA',{
+          timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',
+          hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+      }).formatToParts(date).reduce((result,part)=>{if(part.type!=='literal') result[part.type]=Number(part.value);return result;},{});
+      return parts;
+  }
+
+  function saoPauloMidnight(year,month,day){
+      const desired=Date.UTC(year,month-1,day,0,0,0,0);
+      let candidate=new Date(desired+3*60*60*1000);
+      for(let attempt=0;attempt<2;attempt++){
+          const parts=saoPauloParts(candidate);
+          const represented=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second,0);
+          candidate=new Date(candidate.getTime()+(desired-represented));
+      }
+      candidate.setUTCMilliseconds(0);
+      return candidate;
+  }
+
+  function proposalWeek(value=new Date()){
+      const parts=saoPauloParts(value);
+      const calendar=new Date(Date.UTC(parts.year,parts.month-1,parts.day));
+      const daysSinceFriday=(calendar.getUTCDay()-5+7)%7;
+      calendar.setUTCDate(calendar.getUTCDate()-daysSinceFriday);
+      const year=calendar.getUTCFullYear(), month=calendar.getUTCMonth()+1, day=calendar.getUTCDate();
+      const pad=number=>String(number).padStart(2,'0');
+      const start=saoPauloMidnight(year,month,day);
+      const end=new Date(start.getTime()+7*24*60*60*1000);
+      return {id:`semana_${year}-${pad(month)}-${pad(day)}`,start,end};
+  }
+
+  function weekAfter(value){
+      const current=proposalWeek(value);
+      return proposalWeek(new Date(current.start.getTime()+7*24*60*60*1000));
+  }
+
+  function cycleWeek(cycle){
+      return proposalWeek(cycle?.semanaEnvioInicio || cycle?.inicioIso || new Date());
+  }
+
+  function weekFields(week){
+      return {
+          semanaEnvioId:week.id,
+          semanaEnvioInicio:firebase.firestore.Timestamp.fromDate(week.start),
+          semanaEnvioFim:firebase.firestore.Timestamp.fromDate(week.end)
+      };
+  }
+
+  function proposalDestination(cycle, week=proposalWeek()){
+      const activeWeek=cycleWeek(cycle);
+      return activeWeek.id===week.id ? cycle.id : week.id;
+  }
 
   // Componentes de UI
   function toast(message, type='info', title=''){
@@ -198,8 +252,15 @@
   async function ensureCycle(){
     state.cycle = await state.db.runTransaction(async tx => {
         const ref = currentCycle(), snap = await tx.get(ref);
-        if(snap.exists && snap.data().status==='aberto' && snap.data().id) return snap.data();
-        const id = cycleId(), data = {id, status:'aberto', inicioEm:ts(), inicioIso:new Date().toISOString(), previsaoFimIso:nextFriday(), abertoPor:state.nick, abertoPorUid:state.auth.currentUser.uid, atualizadoEm:ts()};
+        if(snap.exists && snap.data().status==='aberto' && snap.data().id){
+          const current=snap.data();
+          if(current.semanaEnvioId && current.semanaEnvioInicio && current.semanaEnvioFim) return current;
+          const fields=weekFields(cycleWeek(current)), patch={...fields,previsaoFimIso:fields.semanaEnvioFim.toDate().toISOString(),atualizadoEm:ts()}, updated={...current,...patch};
+          tx.set(ref,patch,{merge:true});
+          tx.set(cycles().doc(current.id),patch,{merge:true});
+          return updated;
+        }
+        const id = cycleId(), week=proposalWeek(), fields=weekFields(week), data = {id, status:'aberto', inicioEm:ts(), inicioIso:new Date().toISOString(), previsaoFimIso:week.end.toISOString(), ...fields, abertoPor:state.nick, abertoPorUid:state.auth.currentUser.uid, atualizadoEm:ts()};
         tx.set(ref, data); tx.set(cycles().doc(id), data); return data;
     });
     renderCycle(); return state.cycle;
@@ -208,8 +269,14 @@
   async function migrateLegacy(){
       const snap = await proposals().get(); let batch = state.db.batch(), count = 0, total = 0;
       for(const doc of snap.docs){
-          if(doc.data().cicloId) continue;
-          batch.update(doc.ref, {cicloId:state.cycle.id, ordemId:clean(doc.data().ordemId||doc.id), atualizadoEm:ts()});
+          const proposal=doc.data();
+          if(proposal.cicloId && proposal.semanaEnvioId && proposal.semanaEnvioInicio && proposal.semanaEnvioFim) continue;
+          const activeWeek=cycleWeek(state.cycle);
+          const sourceDate=proposal.criadoEm || proposal.data || state.cycle.inicioIso || new Date();
+          const week=proposalWeek(sourceDate);
+          let destination=clean(proposal.cicloId||state.cycle.id);
+          if(destination===state.cycle.id && week.start.getTime()>activeWeek.start.getTime()) destination=week.id;
+          batch.update(doc.ref, {cicloId:destination,ordemId:clean(proposal.ordemId||doc.id),...weekFields(week),atualizadoEm:ts()});
           count++; total++;
           if(count===400){ await batch.commit(); batch=state.db.batch(); count=0; }
       }
@@ -217,7 +284,11 @@
       if(total) toast(`${total} propostas antigas vinculadas.`, 'info');
   }
   
-  function renderCycle(){ $('cycle-label').textContent = state.cycle ? `${formatDate(state.cycle.inicioEm||state.cycle.inicioIso)} → próxima sexta` : 'Preparando…'; }
+  function renderCycle(){
+      if(!state.cycle){ $('cycle-label').textContent='Preparando…'; return; }
+      const week=cycleWeek(state.cycle), lastMoment=new Date(week.end.getTime()-1000);
+      $('cycle-label').textContent=`${formatDate(week.start)} → ${formatDate(lastMoment)}`;
+  }
 
   // ==========================================
   // BANCO DE DADOS EM TEMPO REAL
@@ -499,7 +570,7 @@
   }
 
   function card(p, opt={}){
-      const list = opt.votes || votesFor(p), result = decision(p, list, leaderNicks()), order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
+      const list = opt.votes || votesFor(p), calculated = decision(p, list, leaderNicks()), result = p.statusFinal==='resolvida'&&p.resultadoFinal ? {key:clean(p.resultadoChave||calculated.key),label:clean(p.resultadoFinal),status:p.resultadoChave==='rejected'?'rejected':'approved'} : calculated, order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
       
       // BOTÃO DA LIDERANÇA
       let btnForcar = '';
@@ -602,10 +673,18 @@
                   let votos = doc.data().votos || [];
                   votos = votos.filter(v => !(parseInt(v.Ordem) === parseInt(ordem) && low(v.Nick || v.nick) === low(state.nick)));
                   votos.push(novoVoto);
-                  tx.update(docRef, { votos });
+                  const propostas=(doc.data().propostas||[]).map(proposta=>{
+                      if(orderOf(proposta)!==parseInt(ordem)) return proposta;
+                      const result=decision(proposta,votos.filter(v=>voteOrder(v)===parseInt(ordem)),leaderNicks());
+                      if(result.key==='approved'||result.key==='rejected') return {...proposta,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:new Date().toISOString()};
+                      const updated={...proposta};
+                      delete updated.statusFinal; delete updated.resultadoChave; delete updated.resultadoFinal; delete updated.resolvidaEmIso;
+                      return updated;
+                  });
+                  tx.update(docRef,{votos,propostas,quantidadeVotos:votos.length,resultadosAtualizadosEm:ts(),resultadosAtualizadosPor:state.nick});
               });
               toast("Resultado alterado no cofre de backup!", "success");
-              renderBackup(backupId); 
+              await loadBackups(backupId);
           } else {
               await votes().doc(votoId).set({ ...novoVoto, Timestamp: ts() });
               toast("Resultado ativo alterado com sucesso!", "success");
@@ -618,22 +697,105 @@
   // ==========================================
   // FUNÇÕES DE BACKUP E FECHAMENTO DE CICLO
   // ==========================================
-  async function saveManual(e){ e.preventDefault(); const btn=$('save-proposal'), order=Number($('form-number').value); busy(btn,true,'Salvando…'); try{ await ensureCycle(); const ref=proposals().doc(String(order)), cycleRef=currentCycle(); await state.db.runTransaction(async tx=>{ const cycleSnap=await tx.get(cycleRef), proposalSnap=await tx.get(ref); if(proposalSnap.exists) throw Error('Já existe uma proposta com esse número.'); if(!cycleSnap.exists||cycleSnap.data().status!=='aberto') throw Error('O ciclo não está aberto.'); tx.set(ref,{ordem:order, ordemId:String(order), autor:clean($('form-author').value), autorUid:state.auth.currentUser.uid, tipo:$('form-type').value, titulo:clean($('form-title').value), conteudo:clean($('form-content').value), data:new Date().toISOString(), origem:'central-forumeiros', enviadoLideranca:false, cicloId:cycleSnap.data().id, criadoEm:ts()}); }); e.target.reset(); $('launch-dialog').close(); toast('Proposta adicionada.', 'success'); }catch(err){ toast(err.message, 'error'); }finally{ busy(btn,false); } }
+  async function saveManual(e){
+      e.preventDefault();
+      const btn=$('save-proposal'), order=Number($('form-number').value);
+      busy(btn,true,'Salvando…');
+      try{
+          await ensureCycle();
+          const ref=proposals().doc(String(order)), cycleRef=currentCycle();
+          let week=proposalWeek(), queued=false;
+          const persist=async targetWeek=>{
+              const fields=weekFields(targetWeek);
+              await state.db.runTransaction(async tx=>{
+                  const cycleSnap=await tx.get(cycleRef), proposalSnap=await tx.get(ref);
+                  if(proposalSnap.exists) throw Error('Já existe uma proposta com esse número.');
+                  if(!cycleSnap.exists||cycleSnap.data().status!=='aberto') throw Error('O ciclo não está aberto.');
+                  const cycle=cycleSnap.data(), destination=proposalDestination(cycle,targetWeek);
+                  queued=destination!==cycle.id;
+                  tx.set(ref,{ordem:order,ordemId:String(order),autor:clean($('form-author').value),autorUid:state.auth.currentUser.uid,tipo:$('form-type').value,titulo:clean($('form-title').value),conteudo:clean($('form-content').value),data:new Date().toISOString(),origem:'central-forumeiros',enviadoLideranca:false,cicloId:destination,...fields,criadoEm:ts()});
+              });
+          };
+          try{
+              await persist(week);
+          }catch(error){
+              const refreshedWeek=proposalWeek();
+              if(error?.code!=='permission-denied'||refreshedWeek.id===week.id) throw error;
+              week=refreshedWeek;
+              await persist(week);
+          }
+          e.target.reset(); $('launch-dialog').close();
+          toast(queued?'Proposta guardada para o próximo ciclo de avaliações.':'Proposta adicionada.','success');
+      }catch(err){ toast(err.message,'error'); }
+      finally{ busy(btn,false); }
+  }
   
-  async function switchCycle(attachment='', warningTargets=[]){ return state.db.runTransaction(async tx=>{ const ref=currentCycle(), s=await tx.get(ref); if(!s.exists||s.data().status!=='aberto') throw Error('Ciclo não está aberto.'); const old=s.data(), id=cycleId(), now=new Date().toISOString(), next={id, status:'aberto', inicioEm:ts(), inicioIso:now, previsaoFimIso:nextFriday(), abertoPor:state.nick, abertoPorUid:state.auth.currentUser.uid, atualizadoEm:ts()}, closing={...old, status:'fechando', fechadoEm:ts(), fechadoIso:now, fechadoPor:state.nick, fechadoPorUid:state.auth.currentUser.uid, advertenciasAlvos:warningTargets}; if(attachment) closing.advertenciaAnexo=attachment; tx.set(cycles().doc(old.id), closing, {merge:true}); tx.set(cycles().doc(id), next); tx.set(ref, next); return {old:old.id, next:id}; }); }
+  async function switchCycle(attachment='', warningTargets=[]){
+      return state.db.runTransaction(async tx=>{
+          const ref=currentCycle(), s=await tx.get(ref);
+          if(!s.exists||s.data().status!=='aberto') throw Error('Ciclo não está aberto.');
+          const old=s.data(), oldWeek=cycleWeek(old), nextWeek=weekAfter(oldWeek.start), fields=weekFields(nextWeek), id=cycleId(), now=new Date().toISOString();
+          const next={id,status:'aberto',inicioEm:ts(),inicioIso:now,previsaoFimIso:nextWeek.end.toISOString(),...fields,abertoPor:state.nick,abertoPorUid:state.auth.currentUser.uid,atualizadoEm:ts()};
+          const closing={...old,status:'fechando',fechadoEm:ts(),fechadoIso:now,fechadoPor:state.nick,fechadoPorUid:state.auth.currentUser.uid,advertenciasAlvos:warningTargets};
+          if(attachment) closing.advertenciaAnexo=attachment;
+          tx.set(cycles().doc(old.id),closing,{merge:true});
+          tx.set(cycles().doc(id),next);
+          tx.set(ref,next);
+          return {old:old.id,next:id,nextWeekId:nextWeek.id};
+      });
+  }
   
   async function reward(p, cycle){ for(const nickname of clean(p.autor).split('/').map(clean).filter(Boolean)){ const member=state.members.find(m=>low(m.name||m.nick)===low(nickname)); if(!member) continue; const safe=`proposta_${cycle}_${idOf(p)}`.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,190), user=state.db.collection('users').doc(member.id), history=user.collection('historico').doc(safe), notification=state.db.collection('notificacoes').doc(`${safe}_${member.id}`.slice(0,220)); await state.db.runTransaction(async tx=>{ const h=await tx.get(history); if(h.exists) return; const u=await tx.get(user), count=Number(u.data()?.propostas)||0; tx.update(user,{propostas:count+1}); tx.set(history,{titulo:'Proposta Aprovada pelo Conselho', timestamp:ts(), data:formatDate(new Date()), autor:state.nick, conteudo:`<b>Tipo:</b> ${esc(p.tipo)}<br><b>Ordem:</b> ${p.ordem}<br><b>Título:</b> ${esc(p.titulo)}<br><br><b>Síntese:</b> ${esc(p.conteudo)}`, dados:{departamento:'Companhia', tipo:p.tipo, ordem:p.ordem, titulo:p.titulo, sintese:p.conteudo, parceiros:p.autor, cicloId:cycle}}); tx.set(notification,{tipo:'companhia_ouvidoria', dados:{nomeUsuario:nickname, tipoProposta:p.tipo}, link:`/membros/${encodeURIComponent(nickname)}`, userId:member.id, lida:false, timestamp:ts(), cicloId:cycle, propostaId:idOf(p)}); }); } }
+
+  async function consolidateResolvedBackups(resolutions, latestVotes, cycle){
+      if(!resolutions.size) return 0;
+      const snapshot=await backups().get(), batch=state.db.batch();
+      let changed=0;
+      snapshot.docs.forEach(doc=>{
+          const data=doc.data(), storedProposals=Array.isArray(data.propostas)?data.propostas:[];
+          const orders=new Set();
+          const updatedProposals=storedProposals.map(proposal=>{
+              const resolution=resolutions.get(orderOf(proposal));
+              if(!resolution) return proposal;
+              orders.add(orderOf(proposal));
+              return {
+                  ...proposal,
+                  statusFinal:'resolvida',
+                  resultadoChave:resolution.key,
+                  resultadoFinal:resolution.label,
+                  resolvidaNoCiclo:cycle,
+                  resolvidaEmIso:new Date().toISOString()
+              };
+          });
+          if(!orders.size) return;
+          const preservedVotes=(Array.isArray(data.votos)?data.votos:[]).filter(vote=>!orders.has(voteOrder(vote)));
+          const refreshedVotes=latestVotes.filter(vote=>orders.has(voteOrder(vote)));
+          const updatedVotes=[...preservedVotes,...refreshedVotes];
+          batch.update(doc.ref,{
+              propostas:updatedProposals,
+              votos:updatedVotes,
+              quantidadePropostas:updatedProposals.length,
+              quantidadeVotos:updatedVotes.length,
+              resultadosAtualizadosEm:ts(),
+              resultadosAtualizadosPor:state.nick
+          });
+          changed++;
+      });
+      if(changed) await batch.commit();
+      return changed;
+  }
   
-  async function processCycle(cycle, next=state.cycle?.id){
+  async function processCycle(cycle, next=state.cycle?.id, nextWeekId=state.cycle?.semanaEnvioId){
       const ref=cycles().doc(cycle);
       try{
           await ref.set({status:'fechando',processamentoPor:state.nick,processamentoEm:ts()},{merge:true});
           const backupRef=backups().doc(cycle);
-          const [ps,vs,bk,cycleSnapshot]=await Promise.all([
+          const [ps,vs,bk,cycleSnapshot,queuedSnapshot]=await Promise.all([
               proposals().where('cicloId','==',cycle).get(),
               votes().get(),
               backupRef.get(),
-              ref.get()
+              ref.get(),
+              nextWeekId ? proposals().where('semanaEnvioId','==',nextWeekId).get() : Promise.resolve({docs:[]})
           ]);
           const cycleData=cycleSnapshot.data()||{};
           const live=ps.docs.map(d=>({id:d.id,...d.data()}));
@@ -652,8 +814,8 @@
               Array.isArray(cycleData.advertenciasAlvos)?cycleData.advertenciasAlvos:null
           );
 
-          const leaders=leaderNicks(),approved=[],resolved=new Set(),resolvedOrders=new Set(),pending=[];
-          props.forEach(p=>{const d=decision(p,votesFor(p,allVotes),leaders);if(d.key==='approved'){approved.push(p);resolved.add(idOf(p));resolvedOrders.add(orderOf(p));}else if(d.key==='rejected'){resolved.add(idOf(p));resolvedOrders.add(orderOf(p));}else pending.push(p);});
+          const leaders=leaderNicks(),approved=[],resolved=new Set(),resolvedOrders=new Set(),resolutions=new Map(),pending=[];
+          props.forEach(p=>{const d=decision(p,votesFor(p,allVotes),leaders);if(d.key==='approved'){approved.push(p);resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else if(d.key==='rejected'){resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else pending.push(p);});
           for(const p of approved) await reward(p,cycle);
 
           const cs=await ref.get();
@@ -663,12 +825,20 @@
               await ref.set({tratamentoEnviado:true,tratamentoEnviadoEm:ts()},{merge:true});
           }
 
+          const updatedBackups=await consolidateResolvedBackups(resolutions,allVotes,cycle);
+
           const b=state.db.batch();
           props.forEach(p=>{const proposalRef=proposals().doc(idOf(p));if(resolved.has(idOf(p)))b.delete(proposalRef);else b.set(proposalRef,{cicloId:next,carregadoDoCiclo:cycle,atualizadoEm:ts()},{merge:true});});
+          queuedSnapshot.docs.forEach(doc=>{
+              if(doc.data().cicloId!==cycle && doc.data().cicloId!==next){
+                  b.set(doc.ref,{cicloId:next,ativadoNoCiclo:next,ativadoEm:ts()},{merge:true});
+              }
+          });
           vs.docs.forEach(d=>{if(resolvedOrders.has(voteOrder(d.data())))b.delete(d.ref);});
           await b.commit();
-          await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,totalAdvertencias:warningCount,backupId:cycle},{merge:true});
-          toast(`${resolved.size} resolvida(s), ${pending.length} transferida(s) e ${warningCount} advertência(s) enviada(s).`,'success');
+          const activated=queuedSnapshot.docs.filter(doc=>doc.data().cicloId!==cycle && doc.data().cicloId!==next).length;
+          await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,totalFilaAtivada:activated,totalBackupsAtualizados:updatedBackups,totalAdvertencias:warningCount,backupId:cycle},{merge:true});
+          toast(`${resolved.size} resolvida(s), ${pending.length} pendente(s) mantida(s), ${activated} nova(s) liberada(s) e ${warningCount} advertência(s) enviada(s).`,'success');
       }catch(e){
           console.error(e);
           await ref.set({status:'erro',erro:clean(e.message||e),erroEm:ts()},{merge:true}).catch(()=>{});
@@ -716,7 +886,7 @@
           }
 
           const result=await switchCycle(attachment,warningTargets);
-          await processCycle(result.old,result.next);
+          await processCycle(result.old,result.next,result.nextWeekId);
       }catch(e){
           toast(e.message||'Interrompido.','error');
       }finally{
@@ -725,7 +895,7 @@
       }
   }
   function renderRecovery(){ $('recovery-panel').hidden = !state.pending; if(state.pending) $('recovery-text').textContent = state.pending.status==='erro' ? `O ciclo ${state.pending.id} parou com erro.` : `Ciclo ${state.pending.id} em processamento.`; }
-  async function resume(){ if(!state.pending||state.busy) return; if(!await ask('Retomar fechamento?','A Central continuará o ciclo pendente.','Retomar',false)) return; state.busy=true; busy($('resume-cycle'),true,'Retomando…'); try{ await processCycle(state.pending.id, state.cycle.id); }catch(e){ toast(e.message||'Falha ao retomar.', 'error'); }finally{ state.busy=false; busy($('resume-cycle'),false); } }
+  async function resume(){ if(!state.pending||state.busy) return; if(!await ask('Retomar fechamento?','A Central continuará o ciclo pendente.','Retomar',false)) return; state.busy=true; busy($('resume-cycle'),true,'Retomando…'); try{ await processCycle(state.pending.id,state.cycle.id,state.cycle.semanaEnvioId); }catch(e){ toast(e.message||'Falha ao retomar.', 'error'); }finally{ state.busy=false; busy($('resume-cycle'),false); } }
 
   async function loadBackups(selected=''){ const s=await backups().orderBy('timestamp','desc').get(); state.backups=new Map(s.docs.map(d=>[d.id,{id:d.id,...d.data()}])); $('backup-select').innerHTML='<option value="" disabled selected>Selecione um backup</option>'+Array.from(state.backups.values()).map(b=>`<option value="${esc(b.id)}">${esc(b.nome_backup||b.data_formatada||b.id)} · ${esc(b.data_formatada||'')}</option>`).join(''); if(selected&&state.backups.has(selected)){ $('backup-select').value=selected; renderBackup(selected); }else{ $('restore-panel').hidden=true; } }
   window.renderBackup = function(id){ const b=state.backups.get(id); if(!b) return; $('restore-panel').hidden=false; const ps=b.propostas||[]; $('history-grid').innerHTML=ps.length ? ps.map(p=>card(p,{backup:id, votes:votesFor(p,b.votos||[])})).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Backup sem propostas</h3></div>'; }
