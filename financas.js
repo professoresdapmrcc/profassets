@@ -3,7 +3,7 @@
   if (!document.getElementById('finance-app')) return;
 
   // ==========================================
-  // CONFIGURAÇÕES GLOBAIS E FIREBASE
+  // CONFIGURAÇÕES GLOBAIS
   // ==========================================
   const TOPIC_ID_PERFORMANCE = '36745'; 
   const TOPIC_ID_GRUPOS = '36766'; 
@@ -13,9 +13,7 @@
   const LEADERSHIP_BASE_MEDALS = 65;
   const CARGO_CONFIG = Object.freeze({Professor:10, Coordenador:10, Graduador:25, Estagiário:15, Conselheiro:15});
   
-  const FIREBASE_CONFIG = Object.freeze({apiKey:'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',authDomain:'nexusprof.firebaseapp.com',projectId:'nexusprof',storageBucket:'nexusprof.appspot.com',messagingSenderId:'268861178598',appId:'1:268861178598:web:9686b81bb003f9514fb127'});
-
-  const state = { db:null, positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{} };
+  const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{} };
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -36,7 +34,7 @@
   }
 
   // ==========================================
-  // AUTENTICAÇÃO E FIREBASE
+  // IDENTIFICAÇÃO NO FÓRUM
   // ==========================================
   function validNick(value){ const nick=clean(value); return nick&&!['convidado','guest','anonymous','anônimo','anonimo'].includes(normalize(nick)) ? nick : ''; }
   function decodeForumValue(value){ const decoded=clean(value).replace(/\\x([0-9a-f]{2})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16))).replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16))).replace(/\\(['"\\])/g,'$1'); const area=document.createElement('textarea'); area.innerHTML=decoded; return validNick(area.value); }
@@ -52,9 +50,6 @@
     }catch(error){ console.warn('Usuário do fórum não identificado:',error); }
     return '';
   }
-
-  if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-  state.db = firebase.firestore();
 
   // ==========================================
   // UTILITÁRIOS DE DATA E RASCUNHOS
@@ -157,7 +152,7 @@
     
     $('leader-results').innerHTML = entries.map((e, idx) => `
       <article class="leader-card"><header><div><h3>${esc(e.nick)}</h3><small>${esc(e.role)}</small></div><i class="ti ti-medal"></i></header>
-      <strong class="medal-total">+${e.medals}</strong><p>${e.days} dia(s) × 65 ÷ 30 = ${e.medals} medalhas</p>
+      <strong class="medal-total">+${e.medals}</strong><p>${e.days} dia(s) × ${LEADERSHIP_BASE_MEDALS} ÷ ${LEADERSHIP_BASE_DAYS} = ${e.medals} medalhas</p>
       <button class="success-button draft-leader" type="button" data-index="${idx}"><i class="ti ti-notes"></i> Adicionar ao rascunho</button></article>`
     ).join('');
     
@@ -274,6 +269,7 @@
       }, 'grupos');
   }
 
+
   // ==========================================
   // ABA 4: RASCUNHOS, BBCODE E DISPARO FINAL
   // ==========================================
@@ -288,9 +284,12 @@
             'SPP': 'Serviço de Proteção dos Professores'
         };
         const nomeLongo = mapNomes[item.cargo] || item.cargo;
+
         return `[font=Poppins][color=#004d1a][b][size=17]✗ DADOS DO RESPONSÁVEL[/size][/b][/color]\n\n[b]Nickname:[/b] ${item.responsible}\n[b]Grupo de tarefas:[/b] ${nomeLongo}\n\n[color=#004d1a][b][size=17]✗ MEDALHAS ATRIBUÍDAS[/size][/b][/color]\n\n[b]Período de referência:[/b] ${item.periodText}\n[b]Policiais:[/b] ${item.nicks}\n[b]Número de medalhas:[/b] [color=${color}](${formattedMedals})[/color][/font]`;
-    } else {
+    } 
+    else {
         const motive = item.medals > 0 ? `Cumprimento de suas obrigações como ${item.cargo}.` : `Não cumprimento de suas obrigações como ${item.cargo}.`;
+        
         return `[font=Poppins][color=#004d1a][b][size=17]✗ DADOS DO RESPONSÁVEL[/size][/b][/color]\n\n[b]Nickname:[/b] ${item.responsible}\n[b]Grupo de tarefas:[/b] Professores\n[b]Cargo referente:[/b] ${item.cargo}\n\n[color=#004d1a][b][size=17]✗ MEDALHAS ATRIBUÍDAS[/size][/b][/color]\n\n[b]Período de referência:[/b] ${item.periodText}\n[b]Policiais:[/b] ${item.nicks}\n[b]Número de medalhas:[/b] [color=${color}](${formattedMedals})[/color]\n\n[b]Motivo:[/b] ${motive}[/font]`;
     }
   }
@@ -331,7 +330,7 @@
     $('preview-dialog').showModal();
   }
 
-  // ENVIO PRO FÓRUM
+  // ENVIO PRO FÓRUM SOMENTE (Sem salvar no Firebase local)
   async function forumSubmit(item){
     const topicID = item.origin === 'grupos' ? TOPIC_ID_GRUPOS : TOPIC_ID_PERFORMANCE;
     const body = new URLSearchParams({t: topicID, message: medalBBCode(item), mode: 'reply', post: '1'});
@@ -368,7 +367,7 @@
   }
 
   // ==========================================
-  // VIEW, NAVEGAÇÃO E INICIALIZAÇÃO
+  // NAVEGAÇÃO E BINDINGS
   // ==========================================
   function updateCargoUI(){ 
       const cargo = $('prof-cargo').value;
@@ -417,16 +416,6 @@
     $('preview-dialog').addEventListener('click',e=>{if(e.target===$('preview-dialog')) $('preview-dialog').close();});
   }
 
-  // PRÉ-PREENCHIMENTO COM DADOS SIMULADOS PARA FACILITAR O TESTE
-  function injetarDadosSimulados() {
-      $('prof-ativos').value = "Sr.Gabriel.\tVice-Líder\nPegas\tVice-Líder\nTesteNick\tEstagiário";
-      $('prof-desempenho').value = "Sr.Gabriel.\tEXCELENTE\nPegas\tREGULAR\nTesteNick\tRUIM";
-
-      $('grupos-da').value = "Sr.Gabriel.\t5\nPegas\t2\nTesteNick\t3";
-      $('grupos-cdc').value = "Sr.Gabriel.\t3\nPegas\t1";
-      $('grupos-spp').value = "Sr.Gabriel.\t1\nTesteNick\t2";
-  }
-
   async function init(){
     bind(); loadDrafts(); renderDrafts(); updateCargoUI();
     const t=localStorage.getItem('FINANCAS_THEME')==='dark'?'dark':'light'; document.documentElement.dataset.theme=t; $('theme-button').innerHTML=`<i class="ti ${t==='dark'?'ti-sun':'ti-moon'}"></i>`;
@@ -436,10 +425,7 @@
     $('prof-inicio').value=toIsoDate(sunday); $('prof-fim').value=toIsoDate(saturday);
     $('lider-inicio').value=toIsoDate(sunday); $('lider-fim').value=toIsoDate(saturday);
     
-    $('current-nick').textContent = 'Seu_Nickname_Aqui';
-    $('prof-responsavel').value = 'Seu_Nickname_Aqui';
-    $('lider-responsavel').value = 'Seu_Nickname_Aqui';
-    $('grupos-responsavel').value = 'Seu_Nickname_Aqui';
+    $('current-nick').textContent = 'Identificando...';
     
     const nick = await forumNick();
     if(nick) {
@@ -448,17 +434,10 @@
         $('lider-responsavel').value = nick;
         $('grupos-responsavel').value = nick;
         $('current-avatar').src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
-    } else {
-        toast("Sessão do fórum não identificada. Apenas testes ativos.", "warning");
     }
     
-    addLeaderRow({nick: 'Sr.Gabriel.', role: 'Liderança', days: 7});
-    addLeaderRow({nick: 'Pegas', role: 'Liderança', days: 7});
-
-    injetarDadosSimulados();
+    addLeaderRow();
     navigate('professores');
-
-    toast("Sistema Carregado. Todos os campos foram pré-preenchidos.", "success");
   }
 
   init();
