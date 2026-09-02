@@ -13,12 +13,19 @@
   });
   const RECORDS = 'assistencia_registros';
   const OPERATIONS = 'assistencia_acumulos';
+  const SETTINGS_COLLECTION = 'assistencia_config';
+  const SETTINGS_DOCUMENT = 'geral';
   const SETTINGS_KEY = 'PROF_ASSISTENCIA_ACUMULOS';
   const THEME_KEY = 'PROF_ASSISTENCIA_THEME';
   const ACTIVE_LAYOUT_KEY = 'PROF_ASSISTENCIA_ACTIVE_LAYOUT';
   const ACTIVE_DECISIONS = new Set(['pendente', 'aprovada']);
-  const ELIGIBLE_ROLES = new Set(['estagiario', 'conselheiro', 'vice lider', 'lider']);
-  const state = { db: null, auth: null, nick: '', profile: null, records: [], recommendations: [], selected: null, activeLayout:localStorage.getItem(ACTIVE_LAYOUT_KEY)==='list'?'list':'cards', busy: false, unsubscribe: null };
+  const AVAILABLE_ROLES = Object.freeze(['Professor(a)', 'Coordenador(a)', 'Graduador(a)', 'Estagiário(a)', 'Conselheiro(a)', 'Vice-Líder', 'Líder']);
+  const DEFAULT_SETTINGS = Object.freeze({ topicId:'32246', permissionName:'Conselho da Assistência', allowedRoles:['Estagiário(a)', 'Conselheiro(a)', 'Vice-Líder', 'Líder'] });
+  const state = {
+    db: null, auth: null, nick: '', profile: null, records: [], recommendations: [], selected: null,
+    activeLayout:localStorage.getItem(ACTIVE_LAYOUT_KEY)==='list'?'list':'cards', busy: false, unsubscribe: null,
+    settings:{ ...DEFAULT_SETTINGS, allowedRoles:[...DEFAULT_SETTINGS.allowedRoles] }, auditReference:null, auditItems:[]
+  };
 
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
@@ -29,7 +36,12 @@
   const nowDate = () => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
   const todayIso = () => { const [day, month, year] = nowDate().split('/'); return `${year}-${month}-${day}`; };
   const normalizeRole = value => low(value).replace(/\(a\)/g, '').replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
-  const isEligibleRole = value => ELIGIBLE_ROLES.has(normalizeRole(value));
+  const roleMatches = (actual, allowed) => {
+    const current = normalizeRole(actual), expected = normalizeRole(allowed);
+    if (current === expected) return true;
+    return expected === 'conselheiro' && current.startsWith('conselheiro');
+  };
+  const isEligibleRole = value => state.settings.allowedRoles.some(role => roleMatches(value, role));
   const activeDecision = record => ACTIVE_DECISIONS.has(low(record.decisao || record.status || 'PENDENTE')) && record.consumido_em_acumulo !== true;
   const recordType = record => {
     const value = low(record.punicao || record.tipo_ocorrencia || record.tipo || record.motivo);
@@ -41,6 +53,7 @@
   const recordDate = record => record.data_formatada || record.data || 'Sem data';
   const validUrl = value => { try { const url = new URL(clean(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : ''; } catch (_) { return ''; } };
   const hash = value => { let result = 2166136261; for (let i = 0; i < value.length; i += 1) { result ^= value.charCodeAt(i); result = Math.imul(result, 16777619); } return (result >>> 0).toString(36); };
+  const punishmentByType = Object.freeze({ erro:'ERRO', adv_verbal:'NOTIFICAÇÃO', adv_interna:'ADVERTÊNCIA INTERNA' });
 
   function toast(message, type = 'info') {
     const labels = { info: 'Informação', success: 'Sucesso', warning: 'Atenção', error: 'Erro' };
@@ -95,6 +108,66 @@
     return doc ? { id: doc.id, ...doc.data() } : null;
   }
 
+  function safeSettings(data = {}) {
+    const allowedRoles = Array.isArray(data.allowedRoles)
+      ? AVAILABLE_ROLES.filter(role => data.allowedRoles.some(item => roleMatches(item, role)))
+      : [...DEFAULT_SETTINGS.allowedRoles];
+    return {
+      topicId:/^\d+$/.test(clean(data.topicId)) ? clean(data.topicId) : DEFAULT_SETTINGS.topicId,
+      permissionName:clean(data.permissionName).slice(0, 100) || DEFAULT_SETTINGS.permissionName,
+      allowedRoles:allowedRoles.length ? allowedRoles : [...DEFAULT_SETTINGS.allowedRoles],
+      updatedAt:data.updatedAt || null,
+      updatedBy:clean(data.updatedBy)
+    };
+  }
+
+  function applySettingsToInterface() {
+    $('topic-id').value = state.settings.topicId;
+    $('permission-name').value = state.settings.permissionName;
+    $('sidebar-permission').textContent = state.settings.permissionName;
+    $('manual-permission-badge').textContent = `Permissão: ${state.settings.permissionName}`;
+    $('role-settings').innerHTML = AVAILABLE_ROLES.map(role => {
+      const checked = state.settings.allowedRoles.some(item => roleMatches(item, role));
+      return `<label class="role-option"><input type="checkbox" value="${esc(role)}" ${checked ? 'checked' : ''}><span><i class="ti ti-check"></i>${esc(role)}</span></label>`;
+    }).join('');
+    const updated = state.settings.updatedAt ? new Date(toMillis(state.settings.updatedAt)).toLocaleString('pt-BR') : '';
+    $('settings-meta').textContent = updated
+      ? `Última alteração em ${updated}${state.settings.updatedBy ? ` por ${state.settings.updatedBy}` : ''}.`
+      : 'Configuração padrão carregada. Salve para compartilhá-la no Firebase.';
+  }
+
+  async function loadSettings() {
+    const snapshot = await state.db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOCUMENT).get();
+    if (snapshot.exists) state.settings = safeSettings(snapshot.data());
+    else {
+      try {
+        const local = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+        state.settings = safeSettings({ ...DEFAULT_SETTINGS, topicId:local.topicId || DEFAULT_SETTINGS.topicId });
+      } catch (_) { state.settings = safeSettings(DEFAULT_SETTINGS); }
+    }
+    applySettingsToInterface();
+  }
+
+  async function saveSettings() {
+    if (state.busy) return;
+    const topicId = clean($('topic-id').value), permissionName = clean($('permission-name').value);
+    const allowedRoles = [...$('role-settings').querySelectorAll('input:checked')].map(input => input.value);
+    if (!/^\d+$/.test(topicId)) return toast('Informe somente o número do tópico.', 'error');
+    if (!permissionName) return toast('Informe a permissão exibida nas postagens.', 'error');
+    if (!allowedRoles.length) return toast('Selecione ao menos um cargo autorizado.', 'error');
+    const button = $('save-settings'); state.busy = true; setBusy(button, true, 'Salvando…');
+    try {
+      await state.db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOCUMENT).set({
+        topicId, permissionName, allowedRoles, updatedAt:serverTime(), updatedBy:state.nick
+      }, { merge:true });
+      state.settings = safeSettings({ topicId, permissionName, allowedRoles, updatedAt:new Date(), updatedBy:state.nick });
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ topicId }));
+      applySettingsToInterface();
+      toast('Configurações compartilhadas atualizadas.', 'success');
+    } catch (error) { console.error(error); toast(`Não foi possível salvar as configurações: ${error.message}`, 'error'); }
+    finally { state.busy = false; setBusy(button, false); }
+  }
+
   function toMillis(value, fallback = 0) {
     if (!value) return fallback;
     if (typeof value.toMillis === 'function') return value.toMillis();
@@ -111,7 +184,10 @@
 
   function recordCard(record) {
     const type = recordType(record), nick = clean(record.nick || record.nickname || 'Não identificado');
-    return `<article class="record-card" data-type="${type}"><div class="record-head"><div class="person"><img src="${forumAvatar(nick)}" alt=""><div><strong>${esc(nick)}</strong><small>${esc(record.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(record.punicao || 'Ocorrência')}</span></div><p class="record-motive">${esc(record.motivo || 'Motivo não informado.')}</p><div class="record-meta"><span>Data<strong>${esc(recordDate(record))}</strong></span><span>Situação<strong>${esc(record.decisao || 'PENDENTE')}</strong></span></div></article>`;
+    return `<article class="record-card" data-type="${type}"><div class="record-head"><div class="person"><img src="${forumAvatar(nick)}" alt="Cabeça de ${esc(nick)}"><div><strong>${esc(nick)}</strong><small>${esc(record.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(record.punicao || 'Ocorrência')}</span></div><p class="record-motive">${esc(record.motivo || 'Motivo não informado.')}</p><div class="record-meta"><span>Data<strong>${esc(recordDate(record))}</strong></span><span>Situação<strong>${esc(record.decisao || 'PENDENTE')}</strong></span></div><div class="record-actions"><button class="secondary-button compact-button" type="button" data-edit-record="${esc(record.id)}"><i class="ti ti-edit"></i> Ver e alterar</button></div></article>`;
+  }
+  function bindRecordEditors(container = document) {
+    container.querySelectorAll('[data-edit-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.editRecord); });
   }
   function renderActive() {
     const query = low($('active-search').value);
@@ -122,6 +198,7 @@
     $('active-cards-button').classList.toggle('active', state.activeLayout === 'cards');
     $('active-list-button').classList.toggle('active', state.activeLayout === 'list');
     $('active-grid').innerHTML = active.length ? active.map(recordCard).join('') : `<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum registro ativo</h3><p>Não há ocorrências vigentes correspondentes à pesquisa.</p></div>`;
+    bindRecordEditors($('active-grid'));
   }
   function renderHistory() {
     const query = low($('history-search').value);
@@ -129,7 +206,8 @@
     $('history-hero-count').textContent = `${history.length} registro${history.length === 1 ? '' : 's'}`;
     if (!history.length) { $('history-timeline').innerHTML = `<div class="empty"><i class="ti ti-history-off"></i><h3>Nenhum histórico</h3><p>Os registros encerrados ou consumidos aparecerão aqui.</p></div>`; return; }
     const groups = new Map(); history.forEach(record => { const label = dateGroup(bestHistoryMillis(record)); if (!groups.has(label)) groups.set(label, []); groups.get(label).push(record); });
-    $('history-timeline').innerHTML = [...groups].map(([label, items]) => `<section class="history-group"><header><h3>${esc(label)}</h3></header><div class="history-items">${items.map(record => `<article class="history-item"><strong>${esc(record.nick || 'Não identificado')}</strong><span>${esc(record.punicao || 'Ocorrência')}</span><p>${esc(record.motivo || 'Sem motivo informado.')}</p><b class="status-badge">${esc(record.decisao || 'ENCERRADO')}</b></article>`).join('')}</div></section>`).join('');
+    $('history-timeline').innerHTML = [...groups].map(([label, items]) => `<section class="history-group"><header><h3>${esc(label)}</h3></header><div class="history-items">${items.map(record => `<article class="history-item"><div class="history-person"><img src="${forumAvatar(record.nick || '')}" alt=""><strong>${esc(record.nick || 'Não identificado')}</strong></div><span>${esc(record.punicao || 'Ocorrência')}</span><p>${esc(record.motivo || 'Sem motivo informado.')}</p><b class="status-badge">${esc(record.decisao || 'ENCERRADO')}</b><button class="icon-button mini-icon-button" type="button" data-edit-record="${esc(record.id)}" title="Ver e alterar"><i class="ti ti-edit"></i></button></article>`).join('')}</div></section>`).join('');
+    bindRecordEditors($('history-timeline'));
   }
 
   function recommendation(type, sources, index) {
@@ -160,6 +238,126 @@
     document.querySelectorAll('[data-open-accumulation]').forEach(button => button.onclick = () => openAccumulation(button.dataset.openAccumulation));
   }
 
+  function auditNick(value) {
+    return low(value).replace(/^(sr|sra)\.?\s*/i, '').replace(/[^a-z0-9:]/g, '');
+  }
+
+  function parseAuditDate(value) {
+    const text = clean(value);
+    if (!text || low(text) === 'pausado') return 0;
+    const br = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1])).setHours(0,0,0,0);
+    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])).setHours(0,0,0,0);
+    const parsed = Date.parse(text); return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  function sameCargo(left, right) {
+    const a = normalizeRole(left), b = normalizeRole(right);
+    if (a.startsWith('conselheiro') && b.startsWith('conselheiro')) return true;
+    return a === b;
+  }
+
+  function auditItem(record, kind, title, description, changes) {
+    return { id:`${record.id}_${kind}`, recordId:record.id, kind, nick:clean(record.nick), cargo:clean(record.cargo), title, description, changes };
+  }
+
+  async function runAudit() {
+    if (state.busy || !state.db) return;
+    const button = $('run-audit-button'); state.busy = true; setBusy(button, true, 'Comparando…');
+    try {
+      const snapshot = await state.db.collection('nexus_config').doc('dados_externos').get();
+      if (!snapshot.exists) throw new Error('O documento nexus_config/dados_externos não foi encontrado.');
+      const reference = snapshot.data() || {};
+      const members = Array.isArray(reference.membros_ativos) ? reference.membros_ativos : [];
+      const movements = [
+        ...(Array.isArray(reference.promovidos) ? reference.promovidos : []),
+        ...(Array.isArray(reference.rebaixados) ? reference.rebaixados : []),
+        ...(Array.isArray(reference.movimentacoes) ? reference.movimentacoes : [])
+      ];
+      if (!members.length) throw new Error('A lista de membros ativos está vazia. Atualize os dados externos do NEXUS.');
+      state.auditReference = { members, movements };
+      const memberMap = new Map(); members.forEach(member => {
+        const key = auditNick(member.nick || member.nome || member.name);
+        if (key) memberMap.set(key, member);
+      });
+      const movementMap = new Map(); movements.forEach(item => {
+        const key = auditNick(item.nome || item.nick || item.name), date = parseAuditDate(item.data || item.data_iso || item.data_movimento);
+        if (key && date && (!movementMap.has(key) || date > movementMap.get(key).date)) movementMap.set(key, { ...item, date });
+      });
+      const today = new Date(); today.setHours(0,0,0,0);
+      const items = [];
+      state.records.filter(activeDecision).forEach(record => {
+        const key = auditNick(record.nick), member = memberMap.get(key), movement = movementMap.get(key);
+        const appliedAt = parseAuditDate(record.data_iso || record.data_formatada || record.data);
+        if (!member) {
+          items.push(auditItem(record, 'inactive', 'Membro fora da lista ativa', `${record.nick} não consta entre os membros ativos. Revise e marque a ocorrência como INATIVO.`, { decisao:'INATIVO' }));
+          return;
+        }
+        if (movement && appliedAt && appliedAt < movement.date) {
+          const movementDate = new Date(movement.date).toLocaleDateString('pt-BR');
+          items.push(auditItem(record, 'movement', 'Punição anterior à movimentação', `A ocorrência é anterior à promoção ou ao rebaixamento registrado em ${movementDate}. Confirme o cancelamento.`, { decisao:'CANCELADA' }));
+          return;
+        }
+        const currentCargo = clean(member.cargo || member.cargo_atual || member.funcao);
+        if (currentCargo && !sameCargo(record.cargo, currentCargo)) {
+          items.push(auditItem(record, 'role', 'Cargo divergente', `O registro informa ${record.cargo || 'cargo não informado'}, mas a listagem oficial informa ${currentCargo}.`, { cargo:currentCargo }));
+          return;
+        }
+        const licenseActive = ['ativo','ativa','sim','true'].includes(low(member.status_licenca || member.licenca_status));
+        if (licenseActive && low(record.data_termino || record.dataTermino) !== 'pausado') {
+          items.push(auditItem(record, 'license', 'Prazo durante licença ativa', `${record.nick} está com licença ativa. Confirme a pausa do prazo desta ocorrência.`, { data_termino:'PAUSADO' }));
+          return;
+        }
+        const endAt = parseAuditDate(record.data_termino || record.dataTermino);
+        if (!licenseActive && endAt && today.getTime() > endAt) {
+          items.push(auditItem(record, 'expired', 'Prazo encerrado', `O prazo terminou em ${record.data_termino || record.dataTermino}. Confirme a alteração para EXPIRADA.`, { decisao:'EXPIRADA' }));
+        }
+      });
+      state.auditItems = items; renderAudit();
+      toast(items.length ? `${items.length} ajuste(s) precisam de revisão.` : 'A auditoria não encontrou divergências.', items.length ? 'warning' : 'success');
+    } catch (error) { console.error(error); toast(`Não foi possível executar a auditoria: ${error.message}`, 'error'); }
+    finally { state.busy = false; setBusy(button, false); }
+  }
+
+  function renderAudit() {
+    $('audit-nav-count').textContent = state.auditItems.length;
+    $('audit-status').textContent = state.auditItems.length ? `${state.auditItems.length} ação${state.auditItems.length === 1 ? '' : 'ões'} pendente${state.auditItems.length === 1 ? '' : 's'}` : (state.auditReference ? 'Nenhuma divergência encontrada' : 'Auditoria ainda não executada');
+    $('audit-grid').innerHTML = state.auditItems.length ? state.auditItems.map(item => `<article class="audit-card" data-audit-type="${item.kind}"><div class="audit-card-head"><div class="person"><img src="${forumAvatar(item.nick)}" alt=""><div><strong>${esc(item.nick)}</strong><small>${esc(item.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(item.kind)}</span></div><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p><div class="audit-card-actions"><button class="secondary-button compact-button" type="button" data-audit-edit="${esc(item.recordId)}"><i class="ti ti-edit"></i> Abrir registro</button><button class="primary-button compact-button" type="button" data-apply-audit="${esc(item.id)}"><i class="ti ti-check"></i> Aplicar sugestão</button></div></article>`).join('') : `<div class="empty"><i class="ti ti-shield-check"></i><h3>${state.auditReference ? 'Tudo conferido' : 'Auditoria não executada'}</h3><p>${state.auditReference ? 'Nenhuma divergência cadastral foi localizada.' : 'Clique em “Executar auditoria” para comparar os registros com os dados externos do NEXUS.'}</p></div>`;
+    $('audit-grid').querySelectorAll('[data-audit-edit]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.auditEdit); });
+    $('audit-grid').querySelectorAll('[data-apply-audit]').forEach(button => { button.onclick = () => applyAuditSuggestion(button.dataset.applyAudit, button); });
+  }
+
+  async function applyAuditSuggestion(id, button) {
+    if (state.busy) return;
+    const item = state.auditItems.find(entry => entry.id === id), record = state.records.find(entry => entry.id === item?.recordId);
+    if (!item || !record) return toast('A recomendação não está mais disponível.', 'error');
+    if (!window.confirm(`${item.title}\n\n${item.description}\n\nDeseja aplicar esta alteração?`)) return;
+    state.busy = true; setBusy(button, true, 'Aplicando…');
+    try {
+      const recordTypeValue = editableType(record);
+      const recordDateIso = brDateToIso(record.data_iso || record.data_formatada || record.data);
+      const fallbackDates = recordDateIso ? manualDateFields(recordDateIso) : null;
+      if (!recordDateIso || !fallbackDates) throw new Error('O registro não possui uma data válida. Abra-o e corrija a data antes de aplicar a auditoria.');
+      const update = {
+        cargo:clean(record.cargo) || 'Professor(a)', nick:clean(record.nick), punicao:punishmentByType[recordTypeValue],
+        tipo_ocorrencia:recordTypeValue, motivo:clean(record.motivo) || 'Motivo não informado',
+        permissao:clean(record.permissao) || state.settings.permissionName, data_iso:recordDateIso,
+        data_formatada:isoToBr(recordDateIso), data_termino:clean(record.data_termino || record.dataTermino) || fallbackDates.end,
+        decisao:clean(record.decisao || record.status || 'PENDENTE').toUpperCase(), observacao:clean(record.observacao || record.comentario),
+        anexo:validUrl(record.anexo) || '', carta_enviada:record.carta_enviada === true,
+        ...item.changes, sincronizado_sheets:false, status_anterior:clean(record.decisao || 'PENDENTE').toUpperCase(),
+        statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick,
+        auditoriaTipo:item.kind, auditoriaEm:serverTime(), auditoriaPor:state.nick
+      };
+      await state.db.collection(RECORDS).doc(record.id).update(update);
+      state.auditItems = state.auditItems.filter(entry => entry.id !== id); renderAudit();
+      state.recommendations = []; renderRecommendations();
+      toast('Sugestão aplicada e registrada no Firebase.', 'success');
+    } catch (error) { console.error(error); toast(`Não foi possível aplicar a sugestão: ${error.message}`, 'error'); }
+    finally { state.busy = false; setBusy(button, false); }
+  }
+
   function letterTemplate(internal) {
     const heading = internal ? 'CARTA DE ADVERTÊNCIA INTERNA' : 'CARTA DE NOTIFICAÇÃO';
     const intro = internal ? 'Informa-se que você [b]recebeu uma advertência interna[/b] na companhia pelo(s) seguinte(s) motivo(s):' : 'Informa-se que você foi [b]notificado(a)[/b] na companhia pelo(s) seguinte(s) motivo(s):';
@@ -167,7 +365,7 @@
   }
   function topicBBCode(item) {
     const person = item.internal ? 'advertido(a)' : 'notificado(a)';
-    return `[font=Poppins][size=18][center][color=#560c7e][b]${item.punishment}[/b][/color][/center][/size]\n\n[justify][b]Cargo e nick do(a) ${person}:[/b] ${item.cargo} ${item.nick}\n[b]Motivo:[/b] Acúmulo de 3 ${item.sourceName}\n[b]Data:[/b] ${nowDate()}\n[b]Permissão:[/b] Conselho da Assistência\n[/justify][/font]`;
+    return `[font=Poppins][size=18][center][color=#560c7e][b]${item.punishment}[/b][/color][/center][/size]\n\n[justify][b]Cargo e nick do(a) ${person}:[/b] ${item.cargo} ${item.nick}\n[b]Motivo:[/b] Acúmulo de 3 ${item.sourceName}\n[b]Data:[/b] ${nowDate()}\n[b]Permissão:[/b] ${state.settings.permissionName}\n[/justify][/font]`;
   }
   function pmBBCode(item, proof, comment) { return letterTemplate(item.internal).replaceAll('{USERNAME}', item.nick).replaceAll('{MOTIVO}', `Acúmulo de 3 ${item.sourceName}`).replaceAll('{COMENTARIO}', comment).replaceAll('{ANEXO}', proof || '[link do print]'); }
   function updatePreviews() {
@@ -209,7 +407,7 @@
       }
       transaction.set(recordRef, {
         cargo:item.cargo, nick:item.nick, punicao:item.punishment, motivo:`Acúmulo de 3 ${item.sourceName}`,
-        permissao:'Conselho da Assistência', data_formatada:dates.formatted, data_iso:dates.iso, data_termino:dates.end,
+        permissao:state.settings.permissionName, data_formatada:dates.formatted, data_iso:dates.iso, data_termino:dates.end,
         decisao:'PENDENTE', observacao:comment, carta_enviada:true, autor_postagem:state.nick,
         sincronizado_sheets:false, tipo_ocorrencia:item.kind, origem:'acumulo_assistencia', anexo:proof,
         acumulo_id:item.id, registros_origem:item.sources.map(source => source.id), timestamp:serverTime(), atualizadoEm:serverTime()
@@ -264,6 +462,120 @@
     };
   }
 
+  function brDateToIso(value) {
+    const direct = clean(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+    const match = direct.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+  }
+
+  function isoToBr(value) {
+    const match = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+  }
+
+  function editableType(record) {
+    const type = recordType(record);
+    if (type === 'erro') return 'erro';
+    if (type === 'notificacao') return 'adv_verbal';
+    if (type === 'advertencia') return 'adv_interna';
+    return clean(record.tipo_ocorrencia) || 'erro';
+  }
+
+  function closeRecordEditor() {
+    if ($('record-editor-dialog').open) $('record-editor-dialog').close();
+  }
+
+  function togglePausedDeadline() {
+    const paused = $('edit-deadline-paused').checked;
+    $('edit-end-date').disabled = paused;
+    $('edit-end-date').required = !paused;
+  }
+
+  function openRecordEditor(id) {
+    const record = state.records.find(item => item.id === id);
+    if (!record) return toast('O registro não foi localizado. Atualize a página.', 'error');
+    state.selected = record;
+    $('edit-record-id').value = record.id;
+    $('edit-cargo').value = AVAILABLE_ROLES.find(role => roleMatches(record.cargo, role)) || 'Professor(a)';
+    $('edit-nick').value = clean(record.nick || record.nickname);
+    $('edit-type').value = editableType(record);
+    $('edit-decision').value = clean(record.decisao || record.status || 'PENDENTE').toUpperCase();
+    if (!$('edit-decision').value) $('edit-decision').value = 'PENDENTE';
+    $('edit-date').value = brDateToIso(record.data_iso || record.data_formatada || record.data);
+    const paused = low(record.data_termino || record.dataTermino) === 'pausado';
+    $('edit-deadline-paused').checked = paused;
+    $('edit-end-date').value = paused ? '' : brDateToIso(record.data_termino || record.dataTermino);
+    $('edit-reason').value = clean(record.motivo);
+    $('edit-permission').value = clean(record.permissao) || state.settings.permissionName;
+    $('edit-observation').value = clean(record.observacao || record.comentario);
+    $('edit-attachment').value = clean(record.anexo);
+    $('edit-letter-sent').checked = record.carta_enviada === true;
+    $('edit-synced').checked = record.sincronizado_sheets === true;
+    $('record-editor-title').textContent = `${record.punicao || 'Ocorrência'} · ${record.nick || 'Sem nickname'}`;
+    $('record-editor-description').textContent = record.consumido_em_acumulo === true
+      ? 'Este registro já participou de um acúmulo. A correção não desfaz automaticamente o vínculo existente.'
+      : `Documento ${record.id}`;
+    $('record-editor-error').hidden = true;
+    $('cancel-record-action').disabled = low(record.decisao) === 'cancelada';
+    togglePausedDeadline();
+    $('record-editor-dialog').showModal();
+  }
+
+  function recordEditorPayload() {
+    const type = clean($('edit-type').value), dateIso = clean($('edit-date').value);
+    const rawAttachment = clean($('edit-attachment').value), attachment = rawAttachment ? validUrl(rawAttachment) : '';
+    const endDate = $('edit-deadline-paused').checked ? 'PAUSADO' : isoToBr($('edit-end-date').value);
+    const payload = {
+      cargo:clean($('edit-cargo').value), nick:clean($('edit-nick').value), punicao:punishmentByType[type],
+      tipo_ocorrencia:type, decisao:clean($('edit-decision').value).toUpperCase(), motivo:clean($('edit-reason').value),
+      permissao:clean($('edit-permission').value), data_iso:dateIso, data_formatada:isoToBr(dateIso), data_termino:endDate,
+      observacao:clean($('edit-observation').value), anexo:attachment, carta_enviada:$('edit-letter-sent').checked,
+      sincronizado_sheets:$('edit-synced').checked
+    };
+    if (!payload.cargo || !payload.nick || !payload.punicao || !payload.decisao || !payload.motivo || !payload.permissao || !payload.data_iso || !payload.data_formatada || !payload.data_termino) return { error:'Preencha todos os campos obrigatórios.' };
+    if (rawAttachment && !attachment) return { error:'O link do anexo deve começar com http:// ou https://.' };
+    return { payload };
+  }
+
+  async function saveRecordEditor(event) {
+    event.preventDefault();
+    if (state.busy || !state.selected) return;
+    const result = recordEditorPayload();
+    if (result.error) { $('record-editor-error').textContent = result.error; $('record-editor-error').hidden = false; return; }
+    const previous = clean(state.selected.decisao || state.selected.status || 'PENDENTE').toUpperCase();
+    const button = $('save-record-editor'); state.busy = true; setBusy(button, true, 'Salvando…');
+    try {
+      await state.db.collection(RECORDS).doc(state.selected.id).update({
+        ...result.payload, status_anterior:previous, statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick,
+        atualizadoEm:serverTime(), atualizadoPor:state.nick
+      });
+      state.recommendations = []; renderRecommendations();
+      state.auditItems = []; renderAudit();
+      closeRecordEditor();
+      toast(`Registro de ${result.payload.nick} atualizado.`, 'success');
+    } catch (error) { console.error(error); $('record-editor-error').textContent = `Não foi possível salvar: ${error.message}`; $('record-editor-error').hidden = false; }
+    finally { state.busy = false; setBusy(button, false); }
+  }
+
+  async function cancelSelectedRecord() {
+    if (state.busy || !state.selected || low(state.selected.decisao) === 'cancelada') return;
+    const result = recordEditorPayload();
+    if (result.error) { $('record-editor-error').textContent = result.error; $('record-editor-error').hidden = false; return; }
+    if (!window.confirm(`Cancelar o registro de ${state.selected.nick || 'membro não identificado'}? Ele continuará disponível no histórico.`)) return;
+    const button = $('cancel-record-action'); state.busy = true; setBusy(button, true, 'Cancelando…');
+    try {
+      await state.db.collection(RECORDS).doc(state.selected.id).update({
+        ...result.payload, decisao:'CANCELADA', status_anterior:clean(state.selected.decisao || 'PENDENTE').toUpperCase(),
+        statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick,
+        sincronizado_sheets:false
+      });
+      state.recommendations = []; renderRecommendations(); state.auditItems = []; renderAudit();
+      closeRecordEditor(); toast('Registro cancelado e preservado no histórico.', 'success');
+    } catch (error) { console.error(error); toast(`Não foi possível cancelar: ${error.message}`, 'error'); }
+    finally { state.busy = false; setBusy(button, false); }
+  }
+
   async function saveManualRecord(event) {
     event.preventDefault();
     if (state.busy || !state.db) return;
@@ -273,14 +585,13 @@
     const dates = manualDateFields($('manual-date').value);
     if (!cargo || !nick || !type || !reason || !dates) return toast('Preencha todos os campos obrigatórios.', 'warning');
     if (rawAttachment && !attachment) return toast('O link do anexo deve começar com http:// ou https://.', 'warning');
-    const punishmentByType = { erro:'ERRO', adv_verbal:'NOTIFICAÇÃO', adv_interna:'ADVERTÊNCIA INTERNA' };
     if (!punishmentByType[type]) return toast('Selecione um tipo de ocorrência válido.', 'warning');
     const recordId = `manual_${Date.now()}_${hash(`${nick}|${type}|${reason}`)}`.slice(0, 190);
     const button = $('save-manual-record'); state.busy = true; setBusy(button, true, 'Salvando…');
     try {
       await state.db.collection(RECORDS).doc(recordId).set({
         cargo, nick, punicao:punishmentByType[type], motivo:reason,
-        permissao:'Conselho da Assistência', data_formatada:dates.formatted,
+        permissao:state.settings.permissionName, data_formatada:dates.formatted,
         data_iso:dates.iso, data_termino:dates.end, decisao:'PENDENTE',
         observacao:observation, carta_enviada:false, autor_postagem:state.nick,
         sincronizado_sheets:false, tipo_ocorrencia:type, origem:'manual_assistencia',
@@ -299,9 +610,10 @@
     }, error => { console.error(error); toast(`Falha ao carregar os registros: ${error.message}`, 'error'); });
   }
   function navigate(view) {
+    if (!['ativos','novo','acumulos','auditoria','historico','configuracoes'].includes(view)) view = 'ativos';
     document.querySelectorAll('.view').forEach(element => { element.hidden = element.id !== `view-${view}`; });
     document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', historico:'Histórico', configuracoes:'Configurações' };
+    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', auditoria:'Auditoria Nexus', historico:'Histórico', configuracoes:'Configurações' };
     $('page-label').textContent = labels[view] || labels.ativos; $('sidebar').classList.remove('open'); location.hash = view;
   }
   function bind() {
@@ -311,28 +623,33 @@
     $('active-cards-button').onclick = () => { state.activeLayout='cards'; localStorage.setItem(ACTIVE_LAYOUT_KEY,'cards'); renderActive(); };
     $('active-list-button').onclick = () => { state.activeLayout='list'; localStorage.setItem(ACTIVE_LAYOUT_KEY,'list'); renderActive(); };
     $('manual-record-form').onsubmit = saveManualRecord;
-    $('refresh-button').onclick = () => { state.recommendations = []; renderRecommendations(); $('analysis-status').textContent = 'Clique em analisar'; toast('Os dados em tempo real já estão atualizados.', 'info'); };
+    $('refresh-button').onclick = () => { state.recommendations = []; state.auditItems = []; state.auditReference = null; renderRecommendations(); renderAudit(); $('analysis-status').textContent = 'Clique em analisar'; toast('Os dados em tempo real já estão atualizados.', 'info'); };
     $('close-dialog').onclick = $('cancel-dialog').onclick = () => { if (!state.busy) $('accumulation-dialog').close(); };
     $('proof-url').oninput = $('letter-comment').oninput = updatePreviews; $('confirm-accumulation').onclick = postSelected;
     document.querySelectorAll('[data-preview]').forEach(button => button.onclick = () => { document.querySelectorAll('[data-preview]').forEach(item => item.classList.toggle('active', item === button)); $('topic-preview').hidden = button.dataset.preview !== 'topic'; $('pm-preview').hidden = button.dataset.preview !== 'pm'; });
-    $('save-settings').onclick = () => { const id = clean($('topic-id').value); if (!/^\d+$/.test(id)) return toast('Informe somente o número do tópico.', 'error'); localStorage.setItem(SETTINGS_KEY, JSON.stringify({ topicId:id })); toast('Configuração salva.', 'success'); };
+    $('run-audit-button').onclick = runAudit;
+    $('record-editor-form').onsubmit = saveRecordEditor;
+    $('close-record-editor').onclick = $('dismiss-record-editor').onclick = () => { if (!state.busy) closeRecordEditor(); };
+    $('cancel-record-action').onclick = cancelSelectedRecord;
+    $('edit-deadline-paused').onchange = togglePausedDeadline;
+    $('save-settings').onclick = saveSettings;
     $('theme-button').onclick = () => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; localStorage.setItem(THEME_KEY, next); $('theme-button').innerHTML = `<i class="ti ${next === 'dark' ? 'ti-sun' : 'ti-moon'}"></i>`; };
   }
 
   async function init() {
-    bind(); renderRecommendations();
+    bind(); renderRecommendations(); renderAudit();
     const theme = localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; $('theme-button').innerHTML = `<i class="ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'}"></i>`;
-    try { const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); if (settings.topicId) $('topic-id').value = settings.topicId; } catch (_) {}
     $('manual-date').value = todayIso();
     try {
       state.nick = await forumUsername();
       if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       state.auth = firebase.auth(); state.db = firebase.firestore();
       if (!state.auth.currentUser) await state.auth.signInAnonymously();
+      await loadSettings();
       state.profile = await findProfile(state.nick);
       if (!state.profile) return deny('Acesso não localizado', `O nickname ${state.nick} não foi encontrado no cadastro de membros.`);
       const profileRole = state.profile.cargo || state.profile.cargoAtual || state.profile.funcao || state.profile.role;
-      if (!isEligibleRole(profileRole)) return deny('Acesso negado', 'Esta página é exclusiva para Estagiário(a), Conselheiro(a), Vice-Líder e Líder.');
+      if (!isEligibleRole(profileRole)) return deny('Acesso negado', `Seu cargo (${profileRole || 'não informado'}) não está entre os cargos autorizados nas configurações da Assistência.`);
       state.profile.cargo = profileRole;
       $('current-nick').textContent = state.nick; $('current-role').textContent = profileRole; $('current-avatar').src = forumAvatar(state.nick);
       subscribeRecords();
