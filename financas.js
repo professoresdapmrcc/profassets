@@ -31,7 +31,7 @@
     {key:'grupos-internos', label:'Grupos Internos'}
   ]);
   
-  const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{} };
+  const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{}, activePerformanceView:null, performanceByView:{} };
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -469,11 +469,46 @@
     if(negativeButton) negativeButton.disabled=true;
   }
 
+  function savePerformanceView(view){
+    if(!view||!PERFORMANCE_VIEWS[view]) return;
+    const valueOf=id=>{ const field=$(id); return field?field.value:''; };
+    state.performanceByView[view]={
+      ativos:valueOf('prof-ativos'),
+      desempenho:valueOf('prof-desempenho'),
+      positivos:valueOf('prof-positivos'),
+      negativos:valueOf('prof-negativos'),
+      especiais:valueOf('prof-especiais'),
+      positive:[...state.positive],
+      negative:[...state.negative],
+      special:[...state.special]
+    };
+  }
+
+  function restorePerformanceView(view){
+    const saved=state.performanceByView[view]||{ativos:'',desempenho:'',positivos:'',negativos:'',especiais:'',positive:[],negative:[],special:[]};
+    const values={
+      'prof-ativos':saved.ativos,
+      'prof-desempenho':saved.desempenho,
+      'prof-positivos':saved.positivos,
+      'prof-negativos':saved.negativos,
+      'prof-especiais':saved.especiais
+    };
+    Object.entries(values).forEach(([id,value])=>{ const field=$(id); if(field) field.value=value||''; });
+    state.positive=Array.isArray(saved.positive)?[...saved.positive]:[];
+    state.negative=Array.isArray(saved.negative)?[...saved.negative]:[];
+    state.special=Array.isArray(saved.special)?[...saved.special]:[];
+    const positiveButton=$('post-prof-positivos'), negativeButton=$('post-prof-negativos');
+    if(positiveButton) positiveButton.disabled=!state.positive.length;
+    if(negativeButton) negativeButton.disabled=!state.negative.length;
+  }
+
   function selectPerformanceView(view){
     const config=PERFORMANCE_VIEWS[view]; if(!config) return;
-    const cargoSelect=$('prof-cargo'), changed=cargoSelect&&cargoSelect.value!==config.cargo;
+    if(state.activePerformanceView&&state.activePerformanceView!==view) savePerformanceView(state.activePerformanceView);
+    const cargoSelect=$('prof-cargo');
     if(cargoSelect) cargoSelect.value=config.cargo;
-    if(changed) clearPerformanceResults();
+    if(state.activePerformanceView!==view) restorePerformanceView(view);
+    state.activePerformanceView=view;
     updateCargoUI();
     const title=$('performance-title'), description=$('performance-description'), chip=$('performance-chip');
     if(title) title.textContent=`Medalhas de ${config.label}.`;
