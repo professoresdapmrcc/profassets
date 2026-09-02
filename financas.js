@@ -266,14 +266,13 @@
 
       addDraft({
           responsible: resp,
-          cargo: subgrupo, // Vai guardar 'DA', 'CDC' ou 'SPP'
+          cargo: subgrupo,
           nicks: nicks,
           medals: qtdMedalhas,
           periodText: periodoStr,
           positive: (qtdMedalhas > 0)
       }, 'grupos');
   }
-
 
   // ==========================================
   // ABA 4: RASCUNHOS, BBCODE E DISPARO FINAL
@@ -282,7 +281,6 @@
     const color = item.medals > 0 ? 'green' : 'red';
     const formattedMedals = item.medals > 0 ? `+${item.medals}` : `${item.medals}`;
 
-    // SE FOR GRUPO INTERNO, O BBCODE É DIFERENTE
     if (item.origin === 'grupos') {
         const mapNomes = {
             'DA': 'Departamento de Aplicação - Professores',
@@ -290,13 +288,9 @@
             'SPP': 'Serviço de Proteção dos Professores'
         };
         const nomeLongo = mapNomes[item.cargo] || item.cargo;
-
         return `[font=Poppins][color=#004d1a][b][size=17]✗ DADOS DO RESPONSÁVEL[/size][/b][/color]\n\n[b]Nickname:[/b] ${item.responsible}\n[b]Grupo de tarefas:[/b] ${nomeLongo}\n\n[color=#004d1a][b][size=17]✗ MEDALHAS ATRIBUÍDAS[/size][/b][/color]\n\n[b]Período de referência:[/b] ${item.periodText}\n[b]Policiais:[/b] ${item.nicks}\n[b]Número de medalhas:[/b] [color=${color}](${formattedMedals})[/color][/font]`;
-    } 
-    // SE FOR DESEMPENHO NORMAL OU LIDERANÇA
-    else {
+    } else {
         const motive = item.medals > 0 ? `Cumprimento de suas obrigações como ${item.cargo}.` : `Não cumprimento de suas obrigações como ${item.cargo}.`;
-        
         return `[font=Poppins][color=#004d1a][b][size=17]✗ DADOS DO RESPONSÁVEL[/size][/b][/color]\n\n[b]Nickname:[/b] ${item.responsible}\n[b]Grupo de tarefas:[/b] Professores\n[b]Cargo referente:[/b] ${item.cargo}\n\n[color=#004d1a][b][size=17]✗ MEDALHAS ATRIBUÍDAS[/size][/b][/color]\n\n[b]Período de referência:[/b] ${item.periodText}\n[b]Policiais:[/b] ${item.nicks}\n[b]Número de medalhas:[/b] [color=${color}](${formattedMedals})[/color]\n\n[b]Motivo:[/b] ${motive}[/font]`;
     }
   }
@@ -337,28 +331,9 @@
     $('preview-dialog').showModal();
   }
 
-  // GRAVAÇÃO NO FIREBASE + ENVIO PRO FÓRUM
+  // ENVIO PRO FÓRUM
   async function forumSubmit(item){
-    // 1. Grava no Firebase primeiro (Segurança)
-    try {
-        await state.db.collection('medalhas_registros').add({
-            responsavel: item.responsible,
-            cargo: item.cargo,
-            nicks: item.nicks,
-            medalhas: Number(item.medals),
-            periodo: item.periodText,
-            origem: item.origin || 'desempenho',
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    } catch(err) {
-        console.error("Falha ao salvar no banco:", err);
-        throw Error("Falha ao salvar histórico no Banco de Dados. A postagem no fórum foi abortada.");
-    }
-
-    // 2. Dispara a Postagem no Fórum (AÇÃO REAL!)
-    // Desempenho normal vai para 36745. Grupos Internos vão para 36766.
     const topicID = item.origin === 'grupos' ? TOPIC_ID_GRUPOS : TOPIC_ID_PERFORMANCE;
-
     const body = new URLSearchParams({t: topicID, message: medalBBCode(item), mode: 'reply', post: '1'});
     const response = await fetch('/post', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString()});
     if(!response.ok) throw Error(`O fórum respondeu com HTTP ${response.status}.`);
@@ -382,7 +357,6 @@
       }
       $('preview-dialog').close();
       toast(`Pronto! ${sent} postagem(ns) enviada(s). Redirecionando pro Fórum...`, 'success');
-      // Redireciona para o fórum principal de professores, independente de onde postou.
       setTimeout(()=>window.location.assign(`/t${TOPIC_ID_PERFORMANCE}-?view=newest`), 1500);
     }catch(error){
       $('preview-dialog').close();
@@ -396,7 +370,15 @@
   // ==========================================
   // VIEW, NAVEGAÇÃO E INICIALIZAÇÃO
   // ==========================================
-  function updateCargoUI(){ const c=$('prof-cargo').value, m=CARGO_CONFIG[c]; $('positive-medal-label').textContent=`+${m} medalhas`; $('negative-medal-label').textContent=`-${m} medalhas`; }
+  function updateCargoUI(){ 
+      const cargo = $('prof-cargo').value;
+      let medals = CARGO_CONFIG[cargo];
+      
+      const lblPos = document.getElementById('positive-medal-label');
+      const lblNeg = document.getElementById('negative-medal-label');
+      if(lblPos) lblPos.textContent=`+${medals} medalhas`; 
+      if(lblNeg) lblNeg.textContent=`-${medals} medalhas`; 
+  }
   
   function navigate(view){
     document.querySelectorAll('.view').forEach(s => s.hidden = s.id!==`view-${view}`);
@@ -437,11 +419,9 @@
 
   // PRÉ-PREENCHIMENTO COM DADOS SIMULADOS PARA FACILITAR O TESTE
   function injetarDadosSimulados() {
-      // 1. Dados Aba Desempenho
       $('prof-ativos').value = "Sr.Gabriel.\tVice-Líder\nPegas\tVice-Líder\nTesteNick\tEstagiário";
       $('prof-desempenho').value = "Sr.Gabriel.\tEXCELENTE\nPegas\tREGULAR\nTesteNick\tRUIM";
 
-      // 2. Dados Aba Grupos Internos
       $('grupos-da').value = "Sr.Gabriel.\t5\nPegas\t2\nTesteNick\t3";
       $('grupos-cdc').value = "Sr.Gabriel.\t3\nPegas\t1";
       $('grupos-spp').value = "Sr.Gabriel.\t1\nTesteNick\t2";
@@ -456,7 +436,6 @@
     $('prof-inicio').value=toIsoDate(sunday); $('prof-fim').value=toIsoDate(saturday);
     $('lider-inicio').value=toIsoDate(sunday); $('lider-fim').value=toIsoDate(saturday);
     
-    // Popula o fórum
     $('current-nick').textContent = 'Seu_Nickname_Aqui';
     $('prof-responsavel').value = 'Seu_Nickname_Aqui';
     $('lider-responsavel').value = 'Seu_Nickname_Aqui';
@@ -470,7 +449,7 @@
         $('grupos-responsavel').value = nick;
         $('current-avatar').src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
     } else {
-        toast("Não identificou sessão no fórum, mas os campos foram pré-preenchidos.", "warning");
+        toast("Sessão do fórum não identificada. Apenas testes ativos.", "warning");
     }
     
     addLeaderRow({nick: 'Sr.Gabriel.', role: 'Liderança', days: 7});
@@ -479,7 +458,7 @@
     injetarDadosSimulados();
     navigate('professores');
 
-    toast("Modo Teste Iniciado: Os campos já foram preenchidos para você gerar os rascunhos e testar o envio para o Fórum/Firebase.", "warning");
+    toast("Sistema Carregado. Todos os campos foram pré-preenchidos.", "success");
   }
 
   init();
