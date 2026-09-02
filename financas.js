@@ -107,7 +107,8 @@
     });
     
     Object.keys(groups).forEach(key => state[key]=[...new Map(groups[key].map(n=>[normalize(n),n])).values()]);
-    $('prof-positivos').value = state.positive.join(' / '); $('prof-negativos').value = state.negative.join(' / '); $('prof-especiais').value = state.special.join(' / ');
+    $('prof-positivos').value = state.positive.join(' / '); $('prof-negativos').value = state.negative.join(' / ');
+    const specialOutput=$('prof-especiais'); if(specialOutput) specialOutput.value=state.special.join(' / ');
     $('post-prof-positivos').disabled = !state.positive.length; $('post-prof-negativos').disabled = !state.negative.length;
     toast(`Filtro concluído: ${state.positive.length} Positivos, ${state.negative.length} Negativos.`, 'success');
   }
@@ -380,65 +381,108 @@
   }
   
   function navigate(view){
-    document.querySelectorAll('.view').forEach(s => s.hidden = s.id!==`view-${view}`);
-    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===view));
-    const labels = {professores:'Desempenho por cargo', lideranca:'Cálculo da Liderança', grupos:'Grupos Internos', rascunhos:'Rascunhos e envio'};
-    $('page-label').textContent = labels[view]; $('sidebar').classList.remove('open'); document.querySelector('.stage').scrollTop = 0;
+    const target=$(`view-${view}`);
+    if(!target){ console.warn(`Aba não encontrada: ${view}`); return; }
+    document.querySelectorAll('.view').forEach(section=>{ section.hidden=section!==target; });
+    document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));
+    const labels={professores:'Desempenho por cargo',lideranca:'Cálculo da Liderança',grupos:'Grupos Internos',rascunhos:'Rascunhos e envio'};
+    const pageLabel=$('page-label'), sidebar=$('sidebar'), stage=document.querySelector('.stage');
+    if(pageLabel) pageLabel.textContent=labels[view]||'Central de Finanças';
+    if(sidebar) sidebar.classList.remove('open');
+    if(stage) stage.scrollTop=0;
   }
 
   function bind(){
-    document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>navigate(b.dataset.view));
-    $('menu-button').onclick=()=>$('sidebar').classList.toggle('open');
-    $('sidebar-overlay').onclick=()=>$('sidebar').classList.remove('open');
-    $('theme-button').onclick=()=>{ const t=document.documentElement.dataset.theme==='dark'?'light':'dark'; document.documentElement.dataset.theme=t; localStorage.setItem('FINANCAS_THEME',t); $('theme-button').innerHTML=`<i class="ti ${t==='dark'?'ti-sun':'ti-moon'}"></i>`; document.querySelector('meta[name="theme-color"]').content=t==='dark'?'#0f0512':'#821f88'; };
-    
-    // Aba Professores
-    $('process-professores').onclick=processPerformance;
-    $('prof-cargo').onchange=updateCargoUI;
-    $('post-prof-positivos').onclick=()=>addPerformanceDraft('positive');
-    $('post-prof-negativos').onclick=()=>addPerformanceDraft('negative');
-    
-    // Aba Liderança
-    $('add-leader').onclick=()=>addLeaderRow();
-    $('calculate-leaders').onclick=calculateLeadership;
-    $('lider-inicio').onchange=syncLeaderDays;
-    $('lider-fim').onchange=syncLeaderDays;
+    document.querySelectorAll('[data-view]').forEach(button=>{
+      button.addEventListener('click',()=>navigate(button.dataset.view));
+    });
+    const click=(id,handler)=>{ const element=$(id); if(element) element.addEventListener('click',handler); };
+    const change=(id,handler)=>{ const element=$(id); if(element) element.addEventListener('change',handler); };
 
-    // Aba Grupos
-    $('process-grupos').onclick=processarGruposInternos;
+    click('menu-button',()=>{ const sidebar=$('sidebar'); if(sidebar) sidebar.classList.toggle('open'); });
+    click('sidebar-overlay',()=>{ const sidebar=$('sidebar'); if(sidebar) sidebar.classList.remove('open'); });
+    click('theme-button',()=>{
+      const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
+      document.documentElement.dataset.theme=theme;
+      try{ localStorage.setItem('FINANCAS_THEME',theme); }catch(_){}
+      const button=$('theme-button'), meta=document.querySelector('meta[name="theme-color"]');
+      if(button) button.innerHTML=`<i class="ti ${theme==='dark'?'ti-sun':'ti-moon'}"></i>`;
+      if(meta) meta.content=theme==='dark'?'#0f0512':'#821f88';
+    });
 
-    // Aba Rascunhos
-    $('review-drafts').onclick=()=>openPreview();
-    $('clear-drafts').onclick=()=>{ if(state.drafts.length && confirm('Excluir todos os rascunhos salvos?')){ state.drafts=[]; saveDrafts(); toast('Excluídos.','success'); } };
-    $('close-preview').onclick=()=>$('preview-dialog').close();
-    $('cancel-preview').onclick=()=>$('preview-dialog').close();
-    $('send-all-drafts').onclick=sendAllDrafts;
-    $('preview-dialog').addEventListener('click',e=>{if(e.target===$('preview-dialog')) $('preview-dialog').close();});
+    click('process-professores',processPerformance);
+    change('prof-cargo',updateCargoUI);
+    click('post-prof-positivos',()=>addPerformanceDraft('positive'));
+    click('post-prof-negativos',()=>addPerformanceDraft('negative'));
+
+    click('add-leader',()=>addLeaderRow());
+    click('calculate-leaders',calculateLeadership);
+    change('lider-inicio',syncLeaderDays);
+    change('lider-fim',syncLeaderDays);
+
+    click('process-grupos',processarGruposInternos);
+
+    click('review-drafts',()=>openPreview());
+    click('clear-drafts',()=>{
+      if(state.drafts.length&&confirm('Excluir todos os rascunhos salvos?')){
+        state.drafts=[]; saveDrafts(); toast('Excluídos.','success');
+      }
+    });
+    click('close-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
+    click('cancel-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
+    click('send-all-drafts',sendAllDrafts);
+    const dialog=$('preview-dialog');
+    if(dialog) dialog.addEventListener('click',event=>{ if(event.target===dialog) dialog.close(); });
   }
 
   async function init(){
-    bind(); loadDrafts(); renderDrafts(); updateCargoUI();
-    const t=localStorage.getItem('FINANCAS_THEME')==='dark'?'dark':'light'; document.documentElement.dataset.theme=t; $('theme-button').innerHTML=`<i class="ti ${t==='dark'?'ti-sun':'ti-moon'}"></i>`;
-    
-    const today=new Date(), day=today.getDay(), sunday=new Date(today); sunday.setDate(today.getDate()-day);
-    const saturday=new Date(sunday); saturday.setDate(sunday.getDate()+6);
-    $('prof-inicio').value=toIsoDate(sunday); $('prof-fim').value=toIsoDate(saturday);
-    $('lider-inicio').value=toIsoDate(sunday); $('lider-fim').value=toIsoDate(saturday);
-    
-    $('current-nick').textContent = 'Identificando...';
-    
-    const nick = await forumNick();
-    if(nick) {
-        $('current-nick').textContent = nick;
-        $('prof-responsavel').value = nick;
-        $('lider-responsavel').value = nick;
-        $('grupos-responsavel').value = nick;
-        $('current-avatar').src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
+    try{
+      bind();
+      loadDrafts();
+      renderDrafts();
+      updateCargoUI();
+
+      const storedTheme=(()=>{ try{return localStorage.getItem('FINANCAS_THEME');}catch(_){return '';} })();
+      const theme=storedTheme==='dark'?'dark':'light';
+      document.documentElement.dataset.theme=theme;
+      const themeButton=$('theme-button');
+      if(themeButton) themeButton.innerHTML=`<i class="ti ${theme==='dark'?'ti-sun':'ti-moon'}"></i>`;
+
+      const today=new Date(), day=today.getDay(), sunday=new Date(today);
+      sunday.setDate(today.getDate()-day);
+      const saturday=new Date(sunday); saturday.setDate(sunday.getDate()+6);
+      const values={
+        'prof-inicio':toIsoDate(sunday),'prof-fim':toIsoDate(saturday),
+        'lider-inicio':toIsoDate(sunday),'lider-fim':toIsoDate(saturday)
+      };
+      Object.entries(values).forEach(([id,value])=>{ const input=$(id); if(input) input.value=value; });
+
+      addLeaderRow();
+      navigate('professores');
+    }catch(error){
+      console.error('Falha ao preparar a Central de Finanças:',error);
+      navigate('professores');
+      toast(`A interface foi recuperada, mas um recurso não iniciou: ${error.message}`,'warning');
     }
-    
-    addLeaderRow();
-    navigate('professores');
+
+    const currentNick=$('current-nick');
+    if(currentNick) currentNick.textContent='Identificando...';
+
+    const nick=await Promise.race([
+      forumNick(),
+      new Promise(resolve=>setTimeout(()=>resolve(''),8000))
+    ]);
+    if(nick){
+      if(currentNick) currentNick.textContent=nick;
+      ['prof-responsavel','lider-responsavel','grupos-responsavel'].forEach(id=>{ const input=$(id); if(input) input.value=nick; });
+      const avatar=$('current-avatar');
+      if(avatar) avatar.src=`https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=3&gesture=sml&size=m&headonly=1`;
+    }else{
+      if(currentNick) currentNick.textContent='Preencha o responsável';
+      toast('Não foi possível identificar o usuário automaticamente. Preencha o responsável antes de criar os rascunhos.','warning');
+    }
   }
 
   init();
 })();
+
