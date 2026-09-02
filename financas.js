@@ -11,7 +11,25 @@
   const DRAFT_STORAGE_KEY = 'FINANCAS_PROF_RASCUNHOS_V3';
   const LEADERSHIP_BASE_DAYS = 30;
   const LEADERSHIP_BASE_MEDALS = 65;
+  const FORUM_POST_INTERVAL_MS = 12000;
+  const FORUM_MAX_ATTEMPTS = 4;
   const CARGO_CONFIG = Object.freeze({Professor:10, Coordenador:10, Graduador:25, Estagiário:15, Conselheiro:15});
+  const PERFORMANCE_VIEWS = Object.freeze({
+    professores:{cargo:'Professor', label:'Professores', display:'Professor(a)'},
+    coordenadores:{cargo:'Coordenador', label:'Coordenadores', display:'Coordenador(a)'},
+    graduadores:{cargo:'Graduador', label:'Graduadores', display:'Graduador(a)'},
+    estagiarios:{cargo:'Estagiário', label:'Estagiários', display:'Estagiário(a)'},
+    conselho:{cargo:'Conselheiro', label:'Conselho', display:'Conselheiro(a)'}
+  });
+  const DRAFT_GROUP_ORDER = Object.freeze([
+    {key:'professores', label:'Professores'},
+    {key:'coordenadores', label:'Coordenadores'},
+    {key:'graduadores', label:'Graduadores'},
+    {key:'estagiarios', label:'Estagiários'},
+    {key:'conselho', label:'Conselho'},
+    {key:'lideranca', label:'Liderança'},
+    {key:'grupos-internos', label:'Grupos Internos'}
+  ]);
   
   const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{} };
   const $ = id => document.getElementById(id);
@@ -295,26 +313,46 @@
     }
   }
 
+  function draftGroupKey(item){
+    if(item.origin === 'lideranca') return 'lideranca';
+    if(item.origin === 'grupos') return 'grupos-internos';
+    const cargo = normalize(item.cargo);
+    if(cargo.includes('coordenador')) return 'coordenadores';
+    if(cargo.includes('graduador')) return 'graduadores';
+    if(cargo.includes('estagiario')) return 'estagiarios';
+    if(cargo.includes('conselheiro') || cargo === 'conselho') return 'conselho';
+    if(cargo.includes('lider') || cargo.includes('vice lider')) return 'lideranca';
+    return 'professores';
+  }
+
+  function groupedDrafts(items){
+    const groups = new Map(DRAFT_GROUP_ORDER.map(group => [group.key, []]));
+    items.forEach(item => groups.get(draftGroupKey(item)).push(item));
+    return DRAFT_GROUP_ORDER.map(group => ({...group, items:groups.get(group.key)})).filter(group => group.items.length);
+  }
+
+  function draftCard(item, index){
+    const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
+    return `<article class="draft-card ${Number(item.medals)<0?'negative':'positive'}">
+      <header><div><h3>${index}. ${esc(nomeParaExibir)}</h3><p>Grupo: ${item.origin==='grupos'?'Grupos Internos':FIXED_GROUP}</p></div>
+      <strong class="draft-medals">${Number(item.medals)>0?'+':''}${Number(item.medals)}</strong></header>
+      <div class="draft-details"><span>Responsável <strong>${esc(item.responsible)}</strong></span><span>Período <strong>${esc(item.periodText)}</strong></span></div>
+      <p class="draft-nicks">${esc(item.nicks)}</p>
+      <div class="draft-actions">
+        <button class="secondary-button preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-eye"></i> Visualizar</button>
+        <button class="danger-button remove-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button>
+      </div>
+    </article>`;
+  }
+
   function renderDrafts(){
     const count = state.drafts.length; 
     $('draft-nav-count').textContent = count; $('draft-hero-count').textContent = `${count} ${count===1?'rascunho':'rascunhos'}`; 
     $('review-drafts').disabled = !count; $('clear-drafts').disabled = !count;
     if(!count){ $('draft-grid').innerHTML='<div class="empty"><i class="ti ti-notes-off"></i><h3>Nenhum rascunho preparado</h3></div>'; return; }
     
-    $('draft-grid').innerHTML = state.drafts.map((item, idx) => {
-        const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
-        return `
-        <article class="draft-card ${Number(item.medals)<0?'negative':'positive'}">
-            <header><div><h3>${idx+1}. ${esc(nomeParaExibir)}</h3><p>Grupo: ${item.origin==='grupos'?'Grupos Internos':FIXED_GROUP}</p></div>
-            <strong class="draft-medals">${Number(item.medals)>0?'+':''}${Number(item.medals)}</strong></header>
-            <div class="draft-details"><span>Responsável <strong>${esc(item.responsible)}</strong></span><span>Período <strong>${esc(item.periodText)}</strong></span></div>
-            <p class="draft-nicks">${esc(item.nicks)}</p>
-            <div class="draft-actions">
-                <button class="secondary-button preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-eye"></i> Visualizar</button>
-                <button class="danger-button remove-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button>
-            </div>
-        </article>`;
-    }).join('');
+    let position = 0;
+    $('draft-grid').innerHTML = groupedDrafts(state.drafts).map(group => `<section class="draft-group" data-group="${group.key}"><header class="draft-group-header"><div><span>${esc(group.label)}</span><small>${group.items.length} ${group.items.length===1?'postagem':'postagens'}</small></div></header><div class="draft-group-items">${group.items.map(item => draftCard(item, ++position)).join('')}</div></section>`).join('');
     
     document.querySelectorAll('.remove-draft').forEach(b=>b.onclick=()=> { state.drafts=state.drafts.filter(i=>i.id!==b.dataset.id); saveDrafts(); toast('Removido.', 'success'); });
     document.querySelectorAll('.preview-draft').forEach(b=>b.onclick=()=> openPreview([b.dataset.id]));
@@ -323,44 +361,82 @@
   function openPreview(ids=null){
     const selected = Array.isArray(ids) ? state.drafts.filter(i=>ids.includes(i.id)) : state.drafts; 
     if(!selected.length){ toast('Sem rascunhos.','warning'); return; }
-    $('preview-list').innerHTML = selected.map((item, idx) => {
-        const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
-        return `<article class="preview-item"><header><h3>Postagem ${idx+1} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(medalBBCode(item))}</pre></article>`;
-    }).join('');
+    let position = 0;
+    $('preview-list').innerHTML = groupedDrafts(selected).map(group => `<section class="preview-group"><header class="preview-group-header"><strong>${esc(group.label)}</strong><small>${group.items.length} ${group.items.length===1?'postagem separada':'postagens separadas'}</small></header>${group.items.map(item => {
+      const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
+      return `<article class="preview-item"><header><h3>Postagem ${++position} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(medalBBCode(item))}</pre></article>`;
+    }).join('')}</section>`).join('');
     $('send-all-drafts').hidden = Array.isArray(ids); 
     $('preview-dialog').showModal();
   }
 
   // ENVIO PRO FÓRUM SOMENTE (Sem salvar no Firebase local)
+  function wait(milliseconds){ return new Promise(resolve => setTimeout(resolve, milliseconds)); }
+
+  function forumResponseError(html, finalUrl, topicID){
+    const plain = clean(html).replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/\s+/g,' ');
+    if(/\/(login|login_register|connexion)/i.test(finalUrl) || /você deve estar conectado|you must be logged/i.test(plain)) return {message:'Sua sessão do fórum expirou.', retry:false};
+    if(/flood|mensagem tão rapidamente|mensagem tao rapidamente|aguarde.+antes de enviar|esperar.+segundos|wait.+seconds/i.test(plain)) return {message:'O Forumeiros ativou a proteção entre postagens.', retry:true};
+    if(/tópico bloqueado|topico bloqueado|não tem permissão|nao tem permissao|não pode responder|nao pode responder/i.test(plain)) return {message:'O tópico está bloqueado ou sua conta não tem permissão para responder.', retry:false};
+    const reachedTopic = new RegExp(`/(?:t${topicID}|t\\d+|p\\d+)(?:[-/?#]|$)`,'i').test(finalUrl);
+    const successMessage = /mensagem foi enviada|mensagem foi publicada|message has been entered successfully/i.test(plain);
+    if(!reachedTopic && !successMessage) return {message:'O fórum não confirmou a publicação desta postagem.', retry:true};
+    return null;
+  }
+
   async function forumSubmit(item){
     const topicID = item.origin === 'grupos' ? TOPIC_ID_GRUPOS : TOPIC_ID_PERFORMANCE;
-    const body = new URLSearchParams({t: topicID, message: medalBBCode(item), mode: 'reply', post: '1'});
-    const response = await fetch('/post', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString()});
-    if(!response.ok) throw Error(`O fórum respondeu com HTTP ${response.status}.`);
-    if(/\/(login|login_register|connexion)/i.test(response.url)) throw Error('Sua sessão expirou.');
+    let lastError = null;
+    for(let attempt=1; attempt<=FORUM_MAX_ATTEMPTS; attempt++){
+      const body = new URLSearchParams({t:topicID, message:medalBBCode(item), mode:'reply', post:'Enviar'});
+      try{
+        const response = await fetch('/post', {method:'POST', credentials:'same-origin', cache:'no-store', redirect:'follow', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString()});
+        const html = await response.text();
+        if(!response.ok) throw Object.assign(Error(`O fórum respondeu com HTTP ${response.status}.`), {retry:response.status>=500||response.status===429});
+        const rejected = forumResponseError(html, response.url, topicID);
+        if(!rejected) return {topicID, finalUrl:response.url};
+        throw Object.assign(Error(rejected.message), {retry:rejected.retry});
+      }catch(error){
+        lastError = error;
+        if(error.retry === false || attempt === FORUM_MAX_ATTEMPTS) break;
+        await wait(FORUM_POST_INTERVAL_MS);
+      }
+    }
+    throw lastError || Error('O fórum não confirmou a postagem.');
   }
 
   async function sendAllDrafts(){
     if(state.posting||!state.drafts.length) return; 
-    const button=$('send-all-drafts'), queue=state.drafts.slice(); 
+    const button=$('send-all-drafts'), queue=groupedDrafts(state.drafts).flatMap(group=>group.items);
     state.posting=true; setBusy(button,true,`Enviando 0/${queue.length}…`); 
-    let sent=0;
-    
+    let sent=0; const failed=[];
+
     try{
-      for(const item of queue){
-          button.innerHTML = `<span class="button-loader"></span>Enviando ${sent+1}/${queue.length}…`;
+      for(let index=0; index<queue.length; index++){
+          const item=queue[index];
+          if(index>0){
+            button.innerHTML = `<span class="button-loader"></span>Aguardando proteção do fórum · ${index}/${queue.length}`;
+            await wait(FORUM_POST_INTERVAL_MS);
+          }
+          button.innerHTML = `<span class="button-loader"></span>Enviando ${index+1}/${queue.length} · ${esc(item.cargo)}…`;
+          try{
           await forumSubmit(item);
           sent++; 
           state.drafts = state.drafts.filter(d => d.id !== item.id); 
           saveDrafts();
-          if(sent < queue.length) await new Promise(resolve => setTimeout(resolve, 800));
+          }catch(error){
+            console.error(`Falha ao publicar o rascunho ${item.id}:`,error);
+            failed.push({item,error});
+            toast(`${item.cargo}: ${error.message} O rascunho foi mantido.`, 'error');
+          }
       }
       $('preview-dialog').close();
-      toast(`Pronto! ${sent} postagem(ns) enviada(s). Redirecionando pro Fórum...`, 'success');
-      setTimeout(()=>window.location.assign(`/t${TOPIC_ID_PERFORMANCE}-?view=newest`), 1500);
-    }catch(error){
-      $('preview-dialog').close();
-      toast(`Falha Crítica: ${error.message} (${sent} de ${queue.length} enviadas).`, 'error');
+      if(!failed.length){
+        toast(`Pronto! As ${sent} postagens foram confirmadas pelo fórum.`, 'success');
+        setTimeout(()=>window.location.assign(`/t${TOPIC_ID_PERFORMANCE}-?view=newest`), 1500);
+      }else{
+        toast(`${sent} de ${queue.length} postagens confirmadas. ${failed.length} permaneceram nos rascunhos para nova tentativa.`, 'warning');
+      }
     }finally{
       state.posting=false; setBusy(button,false);
       renderDrafts();
@@ -379,17 +455,46 @@
       if(lblPos) lblPos.textContent=`+${medals} medalhas`; 
       if(lblNeg) lblNeg.textContent=`-${medals} medalhas`; 
   }
+
+  function clearPerformanceResults(){
+    state.positive=[]; state.negative=[]; state.special=[];
+    const fields={
+      'prof-positivos':'',
+      'prof-negativos':'',
+      'prof-especiais':''
+    };
+    Object.entries(fields).forEach(([id,value])=>{ const field=$(id); if(field) field.value=value; });
+    const positiveButton=$('post-prof-positivos'), negativeButton=$('post-prof-negativos');
+    if(positiveButton) positiveButton.disabled=true;
+    if(negativeButton) negativeButton.disabled=true;
+  }
+
+  function selectPerformanceView(view){
+    const config=PERFORMANCE_VIEWS[view]; if(!config) return;
+    const cargoSelect=$('prof-cargo'), changed=cargoSelect&&cargoSelect.value!==config.cargo;
+    if(cargoSelect) cargoSelect.value=config.cargo;
+    if(changed) clearPerformanceResults();
+    updateCargoUI();
+    const title=$('performance-title'), description=$('performance-description'), chip=$('performance-chip');
+    if(title) title.textContent=`Medalhas de ${config.label}.`;
+    if(description) description.textContent=`Esta área gera exclusivamente as postagens referentes ao cargo de ${config.display}.`;
+    if(chip) chip.textContent=config.display;
+  }
   
   function navigate(view){
-    const target=$(`view-${view}`);
+    const performance=PERFORMANCE_VIEWS[view];
+    const target=$(performance?'view-professores':`view-${view}`);
     if(!target){ console.warn(`Aba não encontrada: ${view}`); return; }
+    if(performance) selectPerformanceView(view);
     document.querySelectorAll('.view').forEach(section=>{ section.hidden=section!==target; });
     document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));
-    const labels={professores:'Desempenho por cargo',lideranca:'Cálculo da Liderança',grupos:'Grupos Internos',rascunhos:'Rascunhos e envio'};
-    const pageLabel=$('page-label'), sidebar=$('sidebar'), stage=document.querySelector('.stage');
-    if(pageLabel) pageLabel.textContent=labels[view]||'Central de Finanças';
+    const labels={lideranca:'Cálculo da Liderança',grupos:'Grupos Internos',rascunhos:'Rascunhos e envio'};
+    const pageLabel=$('page-label'), selectedCargo=$('selected-cargo-label'), sidebar=$('sidebar'), stage=document.querySelector('.stage');
+    if(pageLabel) pageLabel.textContent=performance?`Desempenho · ${performance.label}`:(labels[view]||'Central de Finanças');
+    if(selectedCargo) selectedCargo.textContent=performance?performance.display:(view==='lideranca'?'Liderança':view==='grupos'?'Grupos Internos':'Todos os cargos');
     if(sidebar) sidebar.classList.remove('open');
     if(stage) stage.scrollTop=0;
+    try{ history.replaceState(null,'',`#${view}`); }catch(_){}
   }
 
   function bind(){
@@ -458,7 +563,9 @@
       Object.entries(values).forEach(([id,value])=>{ const input=$(id); if(input) input.value=value; });
 
       addLeaderRow();
-      navigate('professores');
+      const initialView=location.hash.slice(1);
+      const validInitialView=Boolean(PERFORMANCE_VIEWS[initialView]||['lideranca','grupos','rascunhos'].includes(initialView));
+      navigate(validInitialView?initialView:'professores');
     }catch(error){
       console.error('Falha ao preparar a Central de Finanças:',error);
       navigate('professores');
@@ -485,4 +592,3 @@
 
   init();
 })();
-
