@@ -20,8 +20,7 @@
       columns: ['Nick', 'CRO', 'CAC', 'CAP', 'ACL', 'Total (%)', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'CRO', 'CAC', 'CAP', 'ACL'],
       help: 'Ordem aceita: Nick, CRO, CAC, CAP e ACL. Se a origem trouxer Total (%), o valor original será preservado.',
-      placeholder: 'Nick\tCRO\tCAC\tCAP\tACL\nGarfarDias\t2\t15\t7\t2',
-      example: 'Nick\tCRO\tCAC\tCAP\tACL\tTotal (%)\nGarfarDias\t2\t15\t7\t2\t1375%\nmirinha345\t2\t7\t3\t3\t725%\nItsmebiell\t0\t4\t4\t1\t445%\nmick244\t1\t5\t1\t1\t390%\nBe0002\t1\t1\t1\t0\t145%\nDanzyon\t0\t1\t1\t0\t100%\nTioJesse\t0\t2\t0\t0\t100%\nx-arthurlin\t0\t1\t1\t0\t100%\n902938garra\t1\t0\t1\t0\t95%\nJoca..\t0\t0\t0\t2\t90%\nAntecanis\t0\t0\t1\t0\t50%\nLooysx\t0\t1\t0\t0\t50%\nSah-.-3\t0\t1\t0\t0\t50%',
+      placeholder: 'Nick\tCRO\tCAC\tCAP\tACL',
       recentDays: 8
     },
     coordenadores: {
@@ -30,8 +29,7 @@
       columns: ['Nick', 'Carta de Auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA', 'Total (%)', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'Carta de Auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA'],
       help: 'Ordem aceita: Nick, Carta de Auxílio, Acompanhamentos, Orientações, COP e CDA.',
-      placeholder: 'Nick\tCarta de Auxílio\tAcompanhamentos\tOrientações\tCOP\tCDA\nJoca..\tENVIADA\t0\t0\t5\t4',
-      example: 'Nick\tCarta de Auxílio\tAcompanhamentos\tOrientações\tCOP\tCDA\tTotal (%)\nJoca..\tENVIADA\t0\t0\t5\t4\t450%\nGustavo010364\tENVIADA\t1\t0\t2\t1\t200%\nBarbaluxe\tENVIADA\t1\t0\t1\t0\t100%\nDeimoos\tENVIADA\t0\t0\t1\t1\t100%\nElzumbi\tENVIADA\t0\t0\t0\t2\t100%\nLauzinho\tENVIADA\t1\t1\t0\t0\t100%\n.Brendon\tENVIADA\t0\t0\t0\t0\t0%\nLkzspd\tNÃO ENVIADA\t0\t0\t0\t0\t0%\nIsaac.Machado\tNÃO ENVIADA\t0\t0\t0\t0\t0%',
+      placeholder: 'Nick\tCarta de Auxílio\tAcompanhamentos\tOrientações\tCOP\tCDA',
       recentDays: 8
     },
     graduadores: {
@@ -40,8 +38,7 @@
       columns: ['Nick', 'Grad. I', 'Grad. II', 'Total', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'Grad. I', 'Grad. II'],
       help: 'Ordem aceita: Nick, Grad. I e Grad. II. O maior total elegível recebe o status Melhor.',
-      placeholder: 'Nick\tGrad. I\tGrad. II\nPanikiller\t8\t2',
-      example: 'Nick\tGrad. I\tGrad. II\nPanikiller\t8\t2\nGraduadorRegular\t2\t0\nGraduadorTeste\t0\t0',
+      placeholder: 'Nick\tGrad. I\tGrad. II',
       recentDays: 15
     }
   });
@@ -50,7 +47,7 @@
     nick: '', nexusRows: new Map(), nexusHeaders: [], nexusReady: false,
     results: { professores: [], coordenadores: [], graduadores: [] },
     raw: { professores: '', coordenadores: '', graduadores: '' },
-    warnings: [], reviewIds: [], posting: false, testMode: !/(^|\.)policiarcc\.com$/i.test(location.hostname)
+    warnings: [], reviewIds: [], posting: false
   };
 
   const $ = id => document.getElementById(id);
@@ -137,7 +134,6 @@
       fragment.querySelector('.result-title').textContent = `Tabela de ${config.label}`;
       fragment.querySelector('.process-role').dataset.role = role;
       fragment.querySelector('.copy-table').dataset.role = role;
-      fragment.querySelector('.load-example').dataset.role = role;
       fragment.querySelector('.role-input').dataset.role = role;
       fragment.querySelector('.result-table').dataset.role = role;
       view.append(fragment);
@@ -190,19 +186,6 @@
   async function syncNexus(force = false) {
     const button = $('sync-nexus'), source = $('nexus-state');
     setBusy(button, true, ''); source.dataset.state = 'loading'; source.querySelector('i').className = 'ti ti-loader-2'; source.querySelector('strong').textContent = 'Sincronizando NexusList';
-    if (state.testMode) {
-      ingestMockNexus();
-      state.nick = 'Prévia local';
-      $('current-nick').textContent = state.nick;
-      source.dataset.state = 'preview';
-      source.querySelector('i').className = 'ti ti-device-desktop';
-      source.querySelector('strong').textContent = `${state.nexusRows.size} membros simulados`;
-      button.title = 'A NexusList é sincronizada quando a página está hospedada no fórum';
-      setBusy(button, false);
-      Object.keys(ROLE_CONFIG).forEach(role => { if (clean(state.raw[role])) processRole(role,{quiet:true}); });
-      if (force) toast('Você está no simulador local. A NexusList e os envios reais serão ativados somente dentro do fórum.', 'info');
-      return;
-    }
     try {
       if (!state.nick) state.nick = await forumNick();
       $('current-nick').textContent = state.nick;
@@ -235,31 +218,6 @@
       if (clean(nick)) state.nexusRows.set(normalize(nick), record);
     });
     state.nexusReady = state.nexusRows.size > 0;
-  }
-
-  function ingestMockNexus() {
-    const oldDate = '01/01/2026', recentDate = new Intl.DateTimeFormat('pt-BR').format(new Date());
-    const records = [
-      ['GarfarDias','Professor(a)','ATIVO',oldDate],['mirinha345','Professor(a)','ATIVO',oldDate],
-      ['Itsmebiell','Professor(a)','ATIVO',oldDate],['mick244','Professor(a)','ATIVO',oldDate],
-      ['Be0002','Professor(a)','ATIVO',oldDate],['Danzyon','Professor(a)','ATIVO',oldDate],
-      ['TioJesse','Professor(a)','ATIVO',oldDate],['x-arthurlin','Professor(a)','ATIVO',oldDate],
-      ['902938garra','Professor(a)','ATIVO',recentDate],['Antecanis','Professor(a)','ATIVO',recentDate],
-      ['Looysx','Professor(a)','ATIVO',recentDate],['onicin','Professor(a)','LICENÇA',oldDate],
-      ['VitorJoaquin','Professor(a)','LICENÇA',oldDate],['nqqz','Professor(a)','ATIVO',recentDate],
-      ['gowther616','Professor(a)','ATIVO',recentDate],['Kimcho','Professor(a)','ATIVO',oldDate],
-      ['BlueSkies.','Professor(a)','ATIVO',oldDate],['Joca..','Coordenador(a)','ATIVO',oldDate],
-      ['Gustavo010364','Coordenador(a)','ATIVO',oldDate],['Barbaluxe','Coordenador(a)','ATIVO',oldDate],
-      ['Deimoos','Coordenador(a)','ATIVO',oldDate],['Elzumbi','Coordenador(a)','ATIVO',oldDate],
-      ['Lauzinho','Coordenador(a)','ATIVO',oldDate],['.Brendon','INATIVO','INATIVO',oldDate],
-      ['Lkzspd','Coordenador(a)','LICENÇA',oldDate],['Isaac.Machado','Coordenador(a)','ATIVO',oldDate],
-      ['Panikiller','Graduador(a)','ATIVO',oldDate],
-      ['GraduadorRegular','Graduador(a)','ATIVO',oldDate],['GraduadorTeste','Graduador(a)','ATIVO',oldDate],
-      ['Sah-.-3','INATIVO','INATIVO',oldDate]
-    ];
-    state.nexusRows.clear();
-    records.forEach(([nick,cargo,status,entrada]) => state.nexusRows.set(normalize(nick), { NICKNAME:nick, CARGO:cargo, STATUS:status, ENTRADA:entrada, DATAPROMOREB:entrada }));
-    state.nexusReady = true;
   }
 
   function field(record, candidates) {
@@ -443,13 +401,6 @@
     catch (_) { const area = document.createElement('textarea'); area.value=text; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); toast('Consulta copiada.', 'success'); }
   }
 
-  function loadExample(role) {
-    const config = ROLE_CONFIG[role], input = $(`view-${role}`).querySelector('.role-input');
-    input.value = config.example;
-    state.raw[role] = config.example;
-    processRole(role);
-  }
-
   function warningId(role, nick) { return `${role}|${normalize(nick)}|${$('period-start').value}|${$('period-end').value}`; }
 
   function rebuildWarnings() {
@@ -538,12 +489,7 @@
   }
 
   async function forumSubmit(path, data) {
-    if (state.testMode) {
-      await sleep(650);
-      console.info('[SIMULADOR CONTABILIDADE]', path, { ...data, message:'BBCode omitido no console do simulador.' });
-      return { ok:true, simulated:true };
-    }
-    if (!/^https?:$/.test(location.protocol)) throw new Error('Abra esta página dentro do fórum para realizar os envios reais.');
+    if (!/(^|\.)policiarcc\.com$/i.test(location.hostname)) throw new Error('Esta ferramenta realiza envios somente quando aberta dentro do fórum Polícia RCC.');
     const body = new URLSearchParams(); Object.entries(data).forEach(([name,value]) => body.append(name,clean(value)));
     const response = await fetch(path,{ method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString(),redirect:'follow' });
     if (!response.ok) throw new Error(`O fórum recusou ${path} (HTTP ${response.status}).`);
@@ -574,24 +520,10 @@
         if (index < items.length-1) await sleep(CONFIG.postIntervalMs);
       }
       $('review-dialog').close();
-      toast(state.testMode ? 'Simulação concluída: tópico e MPs foram marcados como enviados, mas nada foi publicado.' : 'Todas as advertências selecionadas foram enviadas ao tópico e por MP.', 'success');
+      toast('Todas as advertências selecionadas foram enviadas ao tópico e por MP.', 'success');
     } catch (error) {
       toast(`${error.message} O progresso concluído foi salvo; tente novamente para continuar do ponto pendente.`, 'error');
     } finally { state.posting=false; setBusy(button,false); renderWarnings(); }
-  }
-
-  function resetSimulation() {
-    if (!state.testMode) return;
-    const saved = sentStates();
-    state.warnings.forEach(item => {
-      delete saved[item.id];
-      item.topicSent = false;
-      item.privateSent = false;
-      item.attachment = '';
-    });
-    localStorage.setItem(CONFIG.sendStorageKey, JSON.stringify(saved));
-    renderWarnings();
-    toast('Simulação reiniciada. Você pode preencher os prints e testar novamente.', 'success');
   }
 
   function bind() {
@@ -600,14 +532,12 @@
     $('theme-button').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark',true);
     $('sync-nexus').onclick = () => syncNexus(true);
     document.querySelectorAll('.process-role').forEach(button => button.onclick = () => processRole(button.dataset.role));
-    document.querySelectorAll('.load-example').forEach(button => button.onclick = () => loadExample(button.dataset.role));
     document.querySelectorAll('.copy-table').forEach(button => button.onclick = () => copyRole(button.dataset.role));
     document.querySelectorAll('.role-input').forEach(input => input.addEventListener('input',() => { state.raw[input.dataset.role]=input.value; persist(); }));
     ['period-start','period-end'].forEach(id => $(id).addEventListener('change',() => { persist(); rebuildWarnings(); }));
     $('warning-grid').addEventListener('input', event => { if (event.target.classList.contains('warning-attachment')) captureAttachments(); });
     $('warning-grid').addEventListener('click', event => { const button=event.target.closest('.preview-warning'); if (!button) return; const card=button.closest('[data-warning-id]'); openReview([card.dataset.warningId]); });
     $('review-warnings').onclick = () => openReview(state.warnings.filter(item => !(item.topicSent&&item.privateSent)).map(item => item.id));
-    $('reset-simulation').onclick = resetSimulation;
     $('send-warnings').onclick = sendReviewedWarnings;
     document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
     document.querySelectorAll('.dialog').forEach(dialog => dialog.addEventListener('click',event => { if (event.target===dialog && !state.posting) dialog.close(); }));
@@ -617,10 +547,6 @@
     loadPersisted(); defaultPeriod(); buildRoleViews(); bind();
     setTheme(localStorage.getItem(CONFIG.themeKey) === 'light' ? 'light' : 'dark');
     Object.keys(ROLE_CONFIG).forEach(renderRole); rebuildWarnings(); updateSummaries();
-    if (state.testMode) {
-      $('reset-simulation').hidden = false;
-      $('send-warnings').innerHTML = '<i class="ti ti-flask"></i> Simular tópico e MPs';
-    }
     navigate(location.hash.slice(1) || 'inicio');
     syncNexus(false);
   }
