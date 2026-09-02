@@ -83,7 +83,7 @@
 
   function persist() {
     try {
-      localStorage.setItem(CONFIG.storageKey, JSON.stringify({
+      sessionStorage.setItem(CONFIG.storageKey, JSON.stringify({
         raw: state.raw, results: state.results,
         periodStart: $('period-start').value, periodEnd: $('period-end').value
       }));
@@ -92,7 +92,7 @@
 
   function loadPersisted() {
     try {
-      const data = JSON.parse(localStorage.getItem(CONFIG.storageKey) || '{}');
+      const data = JSON.parse(sessionStorage.getItem(CONFIG.storageKey) || '{}');
       if (data.raw) state.raw = { ...state.raw, ...data.raw };
       if (data.results) state.results = { ...state.results, ...data.results };
       $('period-start').value = clean(data.periodStart);
@@ -101,14 +101,14 @@
   }
 
   function sentStates() {
-    try { return JSON.parse(localStorage.getItem(CONFIG.sendStorageKey) || '{}') || {}; }
+    try { return JSON.parse(sessionStorage.getItem(CONFIG.sendStorageKey) || '{}') || {}; }
     catch (_) { return {}; }
   }
 
   function saveWarningState(warning) {
     const saved = sentStates();
     saved[warning.id] = { topicSent: warning.topicSent, privateSent: warning.privateSent, attachment: warning.attachment };
-    localStorage.setItem(CONFIG.sendStorageKey, JSON.stringify(saved));
+    sessionStorage.setItem(CONFIG.sendStorageKey, JSON.stringify(saved));
   }
 
   function defaultPeriod() {
@@ -544,6 +544,8 @@
   }
 
   function init() {
+    localStorage.removeItem(CONFIG.storageKey);
+    localStorage.removeItem(CONFIG.sendStorageKey);
     loadPersisted(); defaultPeriod(); buildRoleViews(); bind();
     setTheme(localStorage.getItem(CONFIG.themeKey) === 'light' ? 'light' : 'dark');
     Object.keys(ROLE_CONFIG).forEach(renderRole); rebuildWarnings(); updateSummaries();
