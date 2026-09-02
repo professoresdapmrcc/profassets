@@ -24,7 +24,8 @@
   const state = {
     db: null, auth: null, nick: '', profile: null, records: [], recommendations: [], selected: null,
     activeLayout:localStorage.getItem(ACTIVE_LAYOUT_KEY)==='list'?'list':'cards', busy: false, unsubscribe: null,
-    settings:{ ...DEFAULT_SETTINGS, allowedRoles:[...DEFAULT_SETTINGS.allowedRoles] }, auditReference:null, auditItems:[]
+    settings:{ ...DEFAULT_SETTINGS, allowedRoles:[...DEFAULT_SETTINGS.allowedRoles] }, auditReference:null, auditItems:[],
+    nexusReference:null, licenses:new Map(), syncingDeadlines:false
   };
 
   const $ = id => document.getElementById(id);
@@ -182,6 +183,77 @@
   }
   function dateGroup(millis) { return millis ? new Intl.DateTimeFormat('pt-BR', { timeZone:'America/Sao_Paulo', day:'2-digit', month:'long', year:'numeric' }).format(new Date(millis)) : 'Data não informada'; }
 
+  function setNexusReference(reference = {}) {
+    state.nexusReference = reference;
+    state.licenses = new Map();
+    const members = Array.isArray(reference.membros_ativos) ? reference.membros_ativos : [];
+    members.forEach(member => {
+      const key = auditNick(member.nick || member.nome || member.name);
+      if (!key) return;
+      const days = Math.max(0, Number.parseInt(member.licenca, 10) || 0);
+      const status = low(member.status_licenca || member.licenca_status || 'inativo');
+      state.licenses.set(key, { days, active:['ativo','ativa','sim','true'].includes(status) });
+    });
+  }
+
+  async function loadNexusReference() {
+    try {
+      const snapshot = await state.db.collection('nexus_config').doc('dados_externos').get();
+      if (!snapshot.exists) throw new Error('O documento nexus_config/dados_externos não foi encontrado.');
+      setNexusReference(snapshot.data() || {});
+      return state.nexusReference;
+    } catch (error) {
+      console.error('Não foi possível carregar as licenças do NEXUS:', error);
+      setNexusReference({});
+      toast('As licenças não puderam ser atualizadas. Os prazos usarão 30 dias até uma nova consulta.', 'warning');
+      return state.nexusReference;
+    }
+  }
+
+  function automaticEndDate(nick, applicationIso) {
+    const dates = manualDateFields(applicationIso);
+    if (!dates) return '';
+    const license = state.licenses.get(auditNick(nick)) || { days:0, active:false };
+    if (license.active) return 'PAUSADO';
+    const match = dates.iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const end = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    end.setUTCDate(end.getUTCDate() + 30 + license.days);
+    const pad = value => String(value).padStart(2, '0');
+    return `${pad(end.getUTCDate())}/${pad(end.getUTCMonth() + 1)}/${end.getUTCFullYear()}`;
+  }
+
+  function updateAutomaticDeadlinePreview() {
+    const field = $('edit-end-date');
+    if (field) field.value = automaticEndDate($('edit-nick').value, $('edit-date').value) || 'Data inválida';
+  }
+
+  async function syncAutomaticDeadlines(records) {
+    if (state.syncingDeadlines || !state.db) return;
+    const pending = records.filter(record => {
+      if (!activeDecision(record)) return false;
+      const applicationIso = brDateToIso(record.data_iso || record.data_formatada || record.data);
+      const expected = automaticEndDate(record.nick, applicationIso);
+      return expected && clean(record.data_termino || record.dataTermino) !== expected;
+    });
+    if (!pending.length) return;
+    state.syncingDeadlines = true;
+    try {
+      const batch = state.db.batch();
+      pending.forEach(record => {
+        batch.update(state.db.collection(RECORDS).doc(record.id), {
+          data_termino:automaticEndDate(record.nick, brDateToIso(record.data_iso || record.data_formatada || record.data)),
+          status_anterior:clean(record.decisao || record.status || 'PENDENTE').toUpperCase(),
+          statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick,
+          atualizadoEm:serverTime(), atualizadoPor:state.nick
+        });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Falha ao sincronizar prazos automáticos:', error);
+      toast(`Não foi possível atualizar automaticamente os prazos: ${error.message}`, 'error');
+    } finally { state.syncingDeadlines = false; }
+  }
+
   function recordCard(record) {
     const type = recordType(record), nick = clean(record.nick || record.nickname || 'Não identificado');
     return `<article class="record-card" data-type="${type}"><div class="record-head"><div class="person"><img src="${forumAvatar(nick)}" alt="Cabeça de ${esc(nick)}"><div><strong>${esc(nick)}</strong><small>${esc(record.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(record.punicao || 'Ocorrência')}</span></div><p class="record-motive">${esc(record.motivo || 'Motivo não informado.')}</p><div class="record-meta"><span>Data<strong>${esc(recordDate(record))}</strong></span><span>Situação<strong>${esc(record.decisao || 'PENDENTE')}</strong></span></div><div class="record-actions"><button class="secondary-button compact-button" type="button" data-edit-record="${esc(record.id)}"><i class="ti ti-edit"></i> Ver e alterar</button></div></article>`;
@@ -266,9 +338,7 @@
     if (state.busy || !state.db) return;
     const button = $('run-audit-button'); state.busy = true; setBusy(button, true, 'Comparando…');
     try {
-      const snapshot = await state.db.collection('nexus_config').doc('dados_externos').get();
-      if (!snapshot.exists) throw new Error('O documento nexus_config/dados_externos não foi encontrado.');
-      const reference = snapshot.data() || {};
+      const reference = await loadNexusReference();
       const members = Array.isArray(reference.membros_ativos) ? reference.membros_ativos : [];
       const movements = [
         ...(Array.isArray(reference.promovidos) ? reference.promovidos : []),
@@ -304,7 +374,7 @@
           items.push(auditItem(record, 'role', 'Cargo divergente', `O registro informa ${record.cargo || 'cargo não informado'}, mas a listagem oficial informa ${currentCargo}.`, { cargo:currentCargo }));
           return;
         }
-        const licenseActive = ['ativo','ativa','sim','true'].includes(low(member.status_licenca || member.licenca_status));
+        const licenseActive = (state.licenses.get(key) || {}).active === true;
         if (licenseActive && low(record.data_termino || record.dataTermino) !== 'pausado') {
           items.push(auditItem(record, 'license', 'Prazo durante licença ativa', `${record.nick} está com licença ativa. Confirme a pausa do prazo desta ocorrência.`, { data_termino:'PAUSADO' }));
           return;
@@ -323,9 +393,28 @@
   function renderAudit() {
     $('audit-nav-count').textContent = state.auditItems.length;
     $('audit-status').textContent = state.auditItems.length ? `${state.auditItems.length} ação${state.auditItems.length === 1 ? '' : 'ões'} pendente${state.auditItems.length === 1 ? '' : 's'}` : (state.auditReference ? 'Nenhuma divergência encontrada' : 'Auditoria ainda não executada');
+    $('apply-all-audit').disabled = !state.auditItems.length || state.busy;
     $('audit-grid').innerHTML = state.auditItems.length ? state.auditItems.map(item => `<article class="audit-card" data-audit-type="${item.kind}"><div class="audit-card-head"><div class="person"><img src="${forumAvatar(item.nick)}" alt=""><div><strong>${esc(item.nick)}</strong><small>${esc(item.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(item.kind)}</span></div><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p><div class="audit-card-actions"><button class="secondary-button compact-button" type="button" data-audit-edit="${esc(item.recordId)}"><i class="ti ti-edit"></i> Abrir registro</button><button class="primary-button compact-button" type="button" data-apply-audit="${esc(item.id)}"><i class="ti ti-check"></i> Aplicar sugestão</button></div></article>`).join('') : `<div class="empty"><i class="ti ti-shield-check"></i><h3>${state.auditReference ? 'Tudo conferido' : 'Auditoria não executada'}</h3><p>${state.auditReference ? 'Nenhuma divergência cadastral foi localizada.' : 'Clique em “Executar auditoria” para comparar os registros com os dados externos do NEXUS.'}</p></div>`;
     $('audit-grid').querySelectorAll('[data-audit-edit]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.auditEdit); });
     $('audit-grid').querySelectorAll('[data-apply-audit]').forEach(button => { button.onclick = () => applyAuditSuggestion(button.dataset.applyAudit, button); });
+  }
+
+  function buildAuditUpdate(item, record) {
+    const recordTypeValue = editableType(record);
+    const recordDateIso = brDateToIso(record.data_iso || record.data_formatada || record.data);
+    const fallbackDates = recordDateIso ? manualDateFields(recordDateIso) : null;
+    if (!recordDateIso || !fallbackDates) throw new Error(`O registro de ${record.nick || 'membro não identificado'} não possui uma data válida.`);
+    return {
+      cargo:clean(record.cargo) || 'Professor(a)', nick:clean(record.nick), punicao:punishmentByType[recordTypeValue],
+      tipo_ocorrencia:recordTypeValue, motivo:clean(record.motivo) || 'Motivo não informado',
+      permissao:clean(record.permissao) || state.settings.permissionName, data_iso:recordDateIso,
+      data_formatada:isoToBr(recordDateIso), data_termino:clean(record.data_termino || record.dataTermino) || fallbackDates.end,
+      decisao:clean(record.decisao || record.status || 'PENDENTE').toUpperCase(), observacao:clean(record.observacao || record.comentario),
+      anexo:validUrl(record.anexo) || '', carta_enviada:record.carta_enviada === true,
+      ...item.changes, sincronizado_sheets:false, status_anterior:clean(record.decisao || 'PENDENTE').toUpperCase(),
+      statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick,
+      auditoriaTipo:item.kind, auditoriaEm:serverTime(), auditoriaPor:state.nick
+    };
   }
 
   async function applyAuditSuggestion(id, button) {
@@ -335,27 +424,51 @@
     if (!window.confirm(`${item.title}\n\n${item.description}\n\nDeseja aplicar esta alteração?`)) return;
     state.busy = true; setBusy(button, true, 'Aplicando…');
     try {
-      const recordTypeValue = editableType(record);
-      const recordDateIso = brDateToIso(record.data_iso || record.data_formatada || record.data);
-      const fallbackDates = recordDateIso ? manualDateFields(recordDateIso) : null;
-      if (!recordDateIso || !fallbackDates) throw new Error('O registro não possui uma data válida. Abra-o e corrija a data antes de aplicar a auditoria.');
-      const update = {
-        cargo:clean(record.cargo) || 'Professor(a)', nick:clean(record.nick), punicao:punishmentByType[recordTypeValue],
-        tipo_ocorrencia:recordTypeValue, motivo:clean(record.motivo) || 'Motivo não informado',
-        permissao:clean(record.permissao) || state.settings.permissionName, data_iso:recordDateIso,
-        data_formatada:isoToBr(recordDateIso), data_termino:clean(record.data_termino || record.dataTermino) || fallbackDates.end,
-        decisao:clean(record.decisao || record.status || 'PENDENTE').toUpperCase(), observacao:clean(record.observacao || record.comentario),
-        anexo:validUrl(record.anexo) || '', carta_enviada:record.carta_enviada === true,
-        ...item.changes, sincronizado_sheets:false, status_anterior:clean(record.decisao || 'PENDENTE').toUpperCase(),
-        statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick,
-        auditoriaTipo:item.kind, auditoriaEm:serverTime(), auditoriaPor:state.nick
-      };
-      await state.db.collection(RECORDS).doc(record.id).update(update);
+      await state.db.collection(RECORDS).doc(record.id).update(buildAuditUpdate(item, record));
       state.auditItems = state.auditItems.filter(entry => entry.id !== id); renderAudit();
       state.recommendations = []; renderRecommendations();
       toast('Sugestão aplicada e registrada no Firebase.', 'success');
     } catch (error) { console.error(error); toast(`Não foi possível aplicar a sugestão: ${error.message}`, 'error'); }
     finally { state.busy = false; setBusy(button, false); }
+  }
+
+  async function applyAllAuditSuggestions() {
+    if (state.busy || !state.auditItems.length) return;
+    const total = state.auditItems.length;
+    if (!window.confirm(`Aplicar as ${total} recomendações da auditoria?\n\nCada registro será atualizado no Firebase e as alterações ficarão registradas com seu nickname.`)) return;
+    const button = $('apply-all-audit');
+    const items = [...state.auditItems];
+    const failed = [];
+    let applied = 0;
+    state.busy = true;
+    setBusy(button, true, `Aplicando 0/${total}…`);
+    try {
+      for (const item of items) {
+        const record = state.records.find(entry => entry.id === item.recordId);
+        if (!record) {
+          failed.push(item);
+          continue;
+        }
+        try {
+          await state.db.collection(RECORDS).doc(record.id).update(buildAuditUpdate(item, record));
+          applied += 1;
+          button.innerHTML = `<i class="ti ti-loader-2"></i> Aplicando ${applied}/${total}…`;
+        } catch (error) {
+          console.error(`Falha ao aplicar a auditoria em ${record.id}:`, error);
+          failed.push(item);
+        }
+      }
+      state.auditItems = failed;
+      state.recommendations = [];
+      renderAudit();
+      renderRecommendations();
+      if (!failed.length) toast(`${applied} recomendação${applied === 1 ? '' : 'ões'} aplicada${applied === 1 ? '' : 's'} com sucesso.`, 'success');
+      else toast(`${applied} aplicada(s) e ${failed.length} não puderam ser concluída(s). As pendentes continuam na tela.`, 'warning');
+    } finally {
+      state.busy = false;
+      setBusy(button, false);
+      renderAudit();
+    }
   }
 
   function letterTemplate(internal) {
@@ -407,7 +520,7 @@
       }
       transaction.set(recordRef, {
         cargo:item.cargo, nick:item.nick, punicao:item.punishment, motivo:`Acúmulo de 3 ${item.sourceName}`,
-        permissao:state.settings.permissionName, data_formatada:dates.formatted, data_iso:dates.iso, data_termino:dates.end,
+        permissao:state.settings.permissionName, data_formatada:dates.formatted, data_iso:dates.iso, data_termino:automaticEndDate(item.nick, dates.iso),
         decisao:'PENDENTE', observacao:comment, carta_enviada:true, autor_postagem:state.nick,
         sincronizado_sheets:false, tipo_ocorrencia:item.kind, origem:'acumulo_assistencia', anexo:proof,
         acumulo_id:item.id, registros_origem:item.sources.map(source => source.id), timestamp:serverTime(), atualizadoEm:serverTime()
@@ -486,12 +599,6 @@
     if ($('record-editor-dialog').open) $('record-editor-dialog').close();
   }
 
-  function togglePausedDeadline() {
-    const paused = $('edit-deadline-paused').checked;
-    $('edit-end-date').disabled = paused;
-    $('edit-end-date').required = !paused;
-  }
-
   function openRecordEditor(id) {
     const record = state.records.find(item => item.id === id);
     if (!record) return toast('O registro não foi localizado. Atualize a página.', 'error');
@@ -503,35 +610,29 @@
     $('edit-decision').value = clean(record.decisao || record.status || 'PENDENTE').toUpperCase();
     if (!$('edit-decision').value) $('edit-decision').value = 'PENDENTE';
     $('edit-date').value = brDateToIso(record.data_iso || record.data_formatada || record.data);
-    const paused = low(record.data_termino || record.dataTermino) === 'pausado';
-    $('edit-deadline-paused').checked = paused;
-    $('edit-end-date').value = paused ? '' : brDateToIso(record.data_termino || record.dataTermino);
+    $('edit-end-date').value = automaticEndDate(record.nick || record.nickname, $('edit-date').value) || clean(record.data_termino || record.dataTermino);
     $('edit-reason').value = clean(record.motivo);
     $('edit-permission').value = clean(record.permissao) || state.settings.permissionName;
     $('edit-observation').value = clean(record.observacao || record.comentario);
     $('edit-attachment').value = clean(record.anexo);
-    $('edit-letter-sent').checked = record.carta_enviada === true;
-    $('edit-synced').checked = record.sincronizado_sheets === true;
     $('record-editor-title').textContent = `${record.punicao || 'Ocorrência'} · ${record.nick || 'Sem nickname'}`;
     $('record-editor-description').textContent = record.consumido_em_acumulo === true
       ? 'Este registro já participou de um acúmulo. A correção não desfaz automaticamente o vínculo existente.'
       : `Documento ${record.id}`;
     $('record-editor-error').hidden = true;
     $('cancel-record-action').disabled = low(record.decisao) === 'cancelada';
-    togglePausedDeadline();
     $('record-editor-dialog').showModal();
   }
 
   function recordEditorPayload() {
     const type = clean($('edit-type').value), dateIso = clean($('edit-date').value);
     const rawAttachment = clean($('edit-attachment').value), attachment = rawAttachment ? validUrl(rawAttachment) : '';
-    const endDate = $('edit-deadline-paused').checked ? 'PAUSADO' : isoToBr($('edit-end-date').value);
+    const endDate = automaticEndDate($('edit-nick').value, dateIso);
     const payload = {
       cargo:clean($('edit-cargo').value), nick:clean($('edit-nick').value), punicao:punishmentByType[type],
       tipo_ocorrencia:type, decisao:clean($('edit-decision').value).toUpperCase(), motivo:clean($('edit-reason').value),
       permissao:clean($('edit-permission').value), data_iso:dateIso, data_formatada:isoToBr(dateIso), data_termino:endDate,
-      observacao:clean($('edit-observation').value), anexo:attachment, carta_enviada:$('edit-letter-sent').checked,
-      sincronizado_sheets:$('edit-synced').checked
+      observacao:clean($('edit-observation').value), anexo:attachment
     };
     if (!payload.cargo || !payload.nick || !payload.punicao || !payload.decisao || !payload.motivo || !payload.permissao || !payload.data_iso || !payload.data_formatada || !payload.data_termino) return { error:'Preencha todos os campos obrigatórios.' };
     if (rawAttachment && !attachment) return { error:'O link do anexo deve começar com http:// ou https://.' };
@@ -567,8 +668,7 @@
     try {
       await state.db.collection(RECORDS).doc(state.selected.id).update({
         ...result.payload, decisao:'CANCELADA', status_anterior:clean(state.selected.decisao || 'PENDENTE').toUpperCase(),
-        statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick,
-        sincronizado_sheets:false
+        statusAlteradoEm:serverTime(), statusAlteradoPor:state.nick, atualizadoEm:serverTime(), atualizadoPor:state.nick
       });
       state.recommendations = []; renderRecommendations(); state.auditItems = []; renderAudit();
       closeRecordEditor(); toast('Registro cancelado e preservado no histórico.', 'success');
@@ -592,7 +692,7 @@
       await state.db.collection(RECORDS).doc(recordId).set({
         cargo, nick, punicao:punishmentByType[type], motivo:reason,
         permissao:state.settings.permissionName, data_formatada:dates.formatted,
-        data_iso:dates.iso, data_termino:dates.end, decisao:'PENDENTE',
+        data_iso:dates.iso, data_termino:automaticEndDate(nick, dates.iso), decisao:'PENDENTE',
         observacao:observation, carta_enviada:false, autor_postagem:state.nick,
         sincronizado_sheets:false, tipo_ocorrencia:type, origem:'manual_assistencia',
         anexo:attachment, timestamp:serverTime(), atualizadoEm:serverTime()
@@ -607,6 +707,7 @@
     if (state.unsubscribe) state.unsubscribe();
     state.unsubscribe = state.db.collection(RECORDS).onSnapshot(snapshot => {
       state.records = snapshot.docs.map(doc => ({ id:doc.id, ...doc.data() })); renderActive(); renderHistory();
+      syncAutomaticDeadlines(state.records);
     }, error => { console.error(error); toast(`Falha ao carregar os registros: ${error.message}`, 'error'); });
   }
   function navigate(view) {
@@ -628,10 +729,12 @@
     $('proof-url').oninput = $('letter-comment').oninput = updatePreviews; $('confirm-accumulation').onclick = postSelected;
     document.querySelectorAll('[data-preview]').forEach(button => button.onclick = () => { document.querySelectorAll('[data-preview]').forEach(item => item.classList.toggle('active', item === button)); $('topic-preview').hidden = button.dataset.preview !== 'topic'; $('pm-preview').hidden = button.dataset.preview !== 'pm'; });
     $('run-audit-button').onclick = runAudit;
+    $('apply-all-audit').onclick = applyAllAuditSuggestions;
     $('record-editor-form').onsubmit = saveRecordEditor;
     $('close-record-editor').onclick = $('dismiss-record-editor').onclick = () => { if (!state.busy) closeRecordEditor(); };
     $('cancel-record-action').onclick = cancelSelectedRecord;
-    $('edit-deadline-paused').onchange = togglePausedDeadline;
+    $('edit-nick').oninput = updateAutomaticDeadlinePreview;
+    $('edit-date').onchange = updateAutomaticDeadlinePreview;
     $('save-settings').onclick = saveSettings;
     $('theme-button').onclick = () => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; localStorage.setItem(THEME_KEY, next); $('theme-button').innerHTML = `<i class="ti ${next === 'dark' ? 'ti-sun' : 'ti-moon'}"></i>`; };
   }
@@ -645,6 +748,7 @@
       if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       state.auth = firebase.auth(); state.db = firebase.firestore();
       if (!state.auth.currentUser) await state.auth.signInAnonymously();
+      await loadNexusReference();
       await loadSettings();
       state.profile = await findProfile(state.nick);
       if (!state.profile) return deny('Acesso não localizado', `O nickname ${state.nick} não foi encontrado no cadastro de membros.`);
