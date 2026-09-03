@@ -31,7 +31,7 @@
     {key:'grupos-internos', label:'Grupos Internos'}
   ]);
   
-  const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{}, activePerformanceView:null, performanceByView:{} };
+  const state = { positive:[], negative:[], special:[], drafts:[], posting:false, gruposGlobais:{}, gruposTotais:[], activePerformanceView:null, performanceByView:{} };
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -221,27 +221,47 @@
       if (!td && !tc && !ts) { toast("Cole os dados em pelo menos um subgrupo.", "warning"); return; }
 
       const originais = { 'DA': extrairDadosGrupos(td), 'CDC': extrairDadosGrupos(tc), 'SPP': extrairDadosGrupos(ts) };
-      const participacoes = {}, ajustados = {};
+      const subgrupos = Object.keys(originais), membrosGlobais = {}, ajustados = Object.fromEntries(subgrupos.map(sub => [sub, {}]));
 
-      Object.values(originais).forEach(membros => {
-          Object.entries(membros).forEach(([nn, reg]) => {
-              if (reg.qtd > 0) participacoes[nn] = (participacoes[nn] || 0) + 1;
+      subgrupos.forEach(sub => {
+          Object.entries(originais[sub]).forEach(([nn, reg]) => {
+              if(!membrosGlobais[nn]) membrosGlobais[nn] = {nick:reg.nick, valores:{DA:0, CDC:0, SPP:0}};
+              membrosGlobais[nn].nick = reg.nick;
+              membrosGlobais[nn].valores[sub] += reg.qtd;
           });
       });
 
-      Object.entries(originais).forEach(([sub, membros]) => {
-          ajustados[sub] = {};
-          Object.entries(membros).forEach(([nn, reg]) => {
-              const qtG = participacoes[nn] || 1;
-              const teto = qtG >= 3 ? 10 : (qtG === 2 ? 15 : 20);
-              const novaQtd = reg.qtd > 0 ? Math.min(reg.qtd, teto) : reg.qtd;
-              if (!ajustados[sub][novaQtd]) ajustados[sub][novaQtd] = [];
-              ajustados[sub][novaQtd].push(reg.nick);
+      state.gruposTotais = Object.entries(membrosGlobais).map(([nn, membro]) => {
+          const valoresOriginais = {...membro.valores};
+          const positivos = subgrupos.filter(sub => valoresOriginais[sub] > 0);
+          const quantidadeGrupos = positivos.length;
+          const tetoPorGrupo = quantidadeGrupos >= 3 ? 10 : (quantidadeGrupos === 2 ? 15 : 20);
+          const totalAcumulado = subgrupos.reduce((total, sub) => total + valoresOriginais[sub], 0);
+          const valoresAjustados = {...valoresOriginais};
+
+          positivos.forEach(sub => {
+              valoresAjustados[sub] = totalAcumulado >= 25
+                  ? tetoPorGrupo
+                  : Math.min(valoresOriginais[sub], tetoPorGrupo);
           });
-      });
+
+          const totalReceber = subgrupos.reduce((total, sub) => total + valoresAjustados[sub], 0);
+          subgrupos.forEach(sub => {
+              const qtd = valoresAjustados[sub];
+              if(qtd === 0) return;
+              if(!ajustados[sub][qtd]) ajustados[sub][qtd] = [];
+              ajustados[sub][qtd].push(membro.nick);
+          });
+
+          return {normalizado:nn, nick:membro.nick, totalAcumulado, totalReceber, valoresOriginais, valoresAjustados};
+      }).sort((a,b) => b.totalReceber - a.totalReceber || a.nick.localeCompare(b.nick, 'pt-BR'));
 
       state.gruposGlobais = ajustados;
       const c = $('grupos-results-container'); c.innerHTML = '';
+      const totais = $('grupos-total-container');
+      if(totais){
+          totais.innerHTML = state.gruposTotais.length ? `<div class="table-wrap"><table class="leader-table grupos-total-table"><thead><tr><th>Nick</th><th>DA</th><th>CDC</th><th>SPP</th><th>Acumulado</th><th>A receber</th></tr></thead><tbody>${state.gruposTotais.map(membro => `<tr><td><strong>${esc(membro.nick)}</strong></td><td>${membro.valoresAjustados.DA > 0 ? '+' : ''}${membro.valoresAjustados.DA}</td><td>${membro.valoresAjustados.CDC > 0 ? '+' : ''}${membro.valoresAjustados.CDC}</td><td>${membro.valoresAjustados.SPP > 0 ? '+' : ''}${membro.valoresAjustados.SPP}</td><td>${membro.totalAcumulado}</td><td><strong class="${membro.totalReceber < 0 ? 'total-negative' : 'total-positive'}">${membro.totalReceber > 0 ? '+' : ''}${membro.totalReceber}${membro.totalReceber === 30 ? '*' : ''}</strong></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty"><h3>Nenhum membro processado</h3></div>';
+      }
       let gerou = false;
 
       Object.entries(ajustados).forEach(([sub, dados]) => {
