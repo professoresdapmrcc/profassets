@@ -351,6 +351,90 @@
     return DRAFT_GROUP_ORDER.map(group => ({...group, items:groups.get(group.key)})).filter(group => group.items.length);
   }
 
+  function draftSignature(item){
+    return [item.responsible, item.cargo, item.nicks, item.medals, item.periodText].map(normalize).join('|');
+  }
+
+  function draftNickList(value){
+    const unique = new Map();
+    clean(value).split(/\s*\/\s*|\r?\n/).map(clean).filter(Boolean).forEach(nick => unique.set(normalize(nick), nick));
+    return [...unique.values()];
+  }
+
+  function validateGroupDraftLimit(candidate, editingID){
+    if(candidate.origin !== 'grupos') return '';
+    const totals = new Map();
+    const items = state.drafts.filter(item => item.origin === 'grupos' && item.id !== editingID).concat(candidate);
+    items.filter(item => item.periodText === candidate.periodText).forEach(item => {
+      draftNickList(item.nicks).forEach(nick => {
+        const key = normalize(nick);
+        totals.set(key, {nick, total:(totals.get(key)?.total || 0) + Number(item.medals)});
+      });
+    });
+    const exceeded = [...totals.values()].filter(member => member.total > 30);
+    return exceeded.length ? `A alteração faria ${exceeded.map(member => `${member.nick} (+${member.total})`).join(', ')} ultrapassar o limite mensal de 30 medalhas.` : '';
+  }
+
+  function openDraftEditor(id){
+    const item = state.drafts.find(draft => draft.id === id), dialog = $('edit-draft-dialog');
+    if(!item || !dialog) return;
+    $('edit-draft-id').value = item.id;
+    $('edit-draft-responsible').value = item.responsible;
+    $('edit-draft-cargo').value = item.cargo;
+    $('edit-draft-period').value = item.periodText;
+    $('edit-draft-medals').value = item.medals;
+    $('edit-draft-nicks').value = item.nicks;
+    dialog.showModal();
+  }
+
+  function saveDraftEdit(event){
+    event.preventDefault();
+    const id = $('edit-draft-id').value, index = state.drafts.findIndex(item => item.id === id);
+    if(index < 0) return;
+    const old = state.drafts[index], medals = Number($('edit-draft-medals').value);
+    const candidate = {
+      ...old,
+      responsible:clean($('edit-draft-responsible').value),
+      cargo:clean($('edit-draft-cargo').value),
+      periodText:clean($('edit-draft-period').value),
+      medals,
+      nicks:draftNickList($('edit-draft-nicks').value).join(' / '),
+      positive:medals > 0
+    };
+    if(!candidate.responsible || !candidate.cargo || !candidate.periodText || !candidate.nicks || !Number.isFinite(medals) || medals === 0){
+      toast('Preencha todos os campos e informe uma quantidade diferente de zero.', 'warning');
+      return;
+    }
+    if(candidate.origin === 'grupos' && medals > 20){
+      toast('Em um único subgrupo, a quantidade positiva não pode ultrapassar 20 medalhas.', 'warning');
+      return;
+    }
+    const limitError = validateGroupDraftLimit(candidate, id);
+    if(limitError){ toast(limitError, 'error'); return; }
+    candidate.signature = draftSignature(candidate);
+    if(state.drafts.some(item => item.id !== id && item.signature === candidate.signature)){
+      toast('Já existe um rascunho igual a este.', 'warning');
+      return;
+    }
+    state.drafts[index] = candidate;
+    saveDrafts();
+    $('edit-draft-dialog').close();
+    toast('Resumo atualizado com sucesso.', 'success');
+  }
+
+  function removeDraft(id, reopenPreview=false){
+    const item = state.drafts.find(draft => draft.id === id);
+    if(!item || !confirm(`Excluir o rascunho de ${item.cargo}?`)) return;
+    state.drafts = state.drafts.filter(draft => draft.id !== id);
+    saveDrafts();
+    if(reopenPreview){
+      const dialog = $('preview-dialog');
+      if(dialog?.open) dialog.close();
+      if(state.drafts.length) openPreview();
+    }
+    toast('Rascunho excluído.', 'success');
+  }
+
   function draftCard(item, index){
     const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
     return `<article class="draft-card ${Number(item.medals)<0?'negative':'positive'}">
@@ -360,6 +444,7 @@
       <p class="draft-nicks">${esc(item.nicks)}</p>
       <div class="draft-actions">
         <button class="secondary-button preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-eye"></i> Visualizar</button>
+        <button class="secondary-button edit-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-pencil"></i> Editar</button>
         <button class="danger-button remove-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button>
       </div>
     </article>`;
@@ -374,7 +459,8 @@
     let position = 0;
     $('draft-grid').innerHTML = groupedDrafts(state.drafts).map(group => `<section class="draft-group" data-group="${group.key}"><header class="draft-group-header"><div><span>${esc(group.label)}</span><small>${group.items.length} ${group.items.length===1?'postagem':'postagens'}</small></div></header><div class="draft-group-items">${group.items.map(item => draftCard(item, ++position)).join('')}</div></section>`).join('');
     
-    document.querySelectorAll('.remove-draft').forEach(b=>b.onclick=()=> { state.drafts=state.drafts.filter(i=>i.id!==b.dataset.id); saveDrafts(); toast('Removido.', 'success'); });
+    document.querySelectorAll('.remove-draft').forEach(b=>b.onclick=()=>removeDraft(b.dataset.id));
+    document.querySelectorAll('.edit-draft').forEach(b=>b.onclick=()=>openDraftEditor(b.dataset.id));
     document.querySelectorAll('.preview-draft').forEach(b=>b.onclick=()=> openPreview([b.dataset.id]));
   }
 
@@ -384,10 +470,15 @@
     let position = 0;
     $('preview-list').innerHTML = groupedDrafts(selected).map(group => `<section class="preview-group"><header class="preview-group-header"><strong>${esc(group.label)}</strong><small>${group.items.length} ${group.items.length===1?'postagem separada':'postagens separadas'}</small></header>${group.items.map(item => {
       const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
-      return `<article class="preview-item"><header><h3>Postagem ${++position} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(medalBBCode(item))}</pre></article>`;
+      return `<article class="preview-item"><header><h3>Postagem ${++position} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(medalBBCode(item))}</pre><div class="preview-item-actions"><button class="secondary-button edit-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-pencil"></i> Editar</button><button class="danger-button remove-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button></div></article>`;
     }).join('')}</section>`).join('');
     $('send-all-drafts').hidden = Array.isArray(ids); 
     $('preview-dialog').showModal();
+    document.querySelectorAll('.edit-preview-draft').forEach(button => button.onclick=()=>{
+      $('preview-dialog').close();
+      openDraftEditor(button.dataset.id);
+    });
+    document.querySelectorAll('.remove-preview-draft').forEach(button => button.onclick=()=>removeDraft(button.dataset.id, !$('send-all-drafts').hidden));
   }
 
   // ENVIO PRO FÓRUM SOMENTE (Sem salvar no Firebase local)
@@ -612,6 +703,9 @@
     click('close-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
     click('cancel-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
     click('send-all-drafts',sendAllDrafts);
+    click('close-edit-draft',()=>{ const dialog=$('edit-draft-dialog'); if(dialog) dialog.close(); });
+    click('cancel-edit-draft',()=>{ const dialog=$('edit-draft-dialog'); if(dialog) dialog.close(); });
+    const editDraftForm=$('edit-draft-form'); if(editDraftForm) editDraftForm.addEventListener('submit',saveDraftEdit);
     const dialog=$('preview-dialog');
     if(dialog) dialog.addEventListener('click',event=>{ if(event.target===dialog) dialog.close(); });
   }
