@@ -20,8 +20,7 @@
       columns: ['Nick', 'CRO', 'CAC', 'CAP', 'ACL', 'Total (%)', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'CRO', 'CAC', 'CAP', 'ACL'],
       help: 'Ordem aceita: Nick, CRO, CAC, CAP e ACL. Se a origem trouxer Total (%), o valor original será preservado.',
-      placeholder: 'Nick\tCRO\tCAC\tCAP\tACL',
-      recentDays: 8
+      placeholder: 'Nick\tCRO\tCAC\tCAP\tACL'
     },
     coordenadores: {
       label: 'Coordenadores', cargo: 'Coordenador(a)', icon: 'ti-user-star',
@@ -29,8 +28,7 @@
       columns: ['Nick', 'Carta de Auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA', 'Total (%)', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'Carta de Auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA'],
       help: 'Ordem aceita: Nick, Carta de Auxílio, Acompanhamentos, Orientações, COP e CDA.',
-      placeholder: 'Nick\tCarta de Auxílio\tAcompanhamentos\tOrientações\tCOP\tCDA',
-      recentDays: 8
+      placeholder: 'Nick\tCarta de Auxílio\tAcompanhamentos\tOrientações\tCOP\tCDA'
     },
     graduadores: {
       label: 'Graduadores', cargo: 'Graduador(a)', icon: 'ti-certificate',
@@ -38,8 +36,7 @@
       columns: ['Nick', 'Grad. I', 'Grad. II', 'Total', 'Status', 'Motivo'],
       inputColumns: ['Nick', 'Grad. I', 'Grad. II'],
       help: 'Ordem aceita: Nick, Grad. I e Grad. II. O maior total elegível recebe o status Melhor.',
-      placeholder: 'Nick\tGrad. I\tGrad. II',
-      recentDays: 15
+      placeholder: 'Nick\tGrad. I\tGrad. II'
     }
   });
 
@@ -52,6 +49,7 @@
 
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
+  const low = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
   const normalize = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleUpperCase('pt-BR');
   const key = value => normalize(value).replace(/[^A-Z0-9]/g, '');
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
@@ -230,15 +228,52 @@
 
   function parseDate(value) {
     if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      const date = new Date(Date.UTC(1899, 11, 30));
+      date.setUTCDate(date.getUTCDate() + Math.floor(value));
+      return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12);
+    }
     const text = clean(value); if (!text) return null;
     const br = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); if (br) return new Date(Number(br[3]),Number(br[2])-1,Number(br[1]),12);
     const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (iso) return new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]),12);
+    const monthNames = { jan:0, fev:1, mar:2, abr:3, mai:4, jun:5, jul:6, ago:7, set:8, out:9, nov:10, dez:11 };
+    const written = low(text).replace(/\./g,'').replace(/\s+/g,' ').match(/^(\d{1,2})\s*(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s*(\d{4})$/);
+    if (written) return new Date(Number(written[3]),monthNames[written[2]],Number(written[1]),12);
     const parsed = new Date(text); return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
-  function daysSince(value) {
-    const date = parseDate(value), reference = parseDate($('period-end').value) || new Date();
-    return date ? Math.floor((reference.getTime() - date.getTime()) / 86400000) : Infinity;
+  function periodDates() {
+    return { start:parseDate($('period-start').value), end:parseDate($('period-end').value) };
+  }
+
+  function isTrue(value) {
+    return value === true || ['TRUE','VERDADEIRO','SIM','1'].includes(normalize(value));
+  }
+
+  function isInAdaptation(record) {
+    if (isTrue(field(record,['PA','PERIODO DE ADAPTACAO','ADAPTACAO']))) return true;
+    const entry = parseDate(field(record,['ENTRADA','DATA DE ENTRADA']));
+    const { start, end } = periodDates();
+    if (!entry || !start || !end || entry > end) return false;
+    return Math.floor((start.getTime() - entry.getTime()) / 86400000) < 8;
+  }
+
+  function isLicensedInPeriod(record) {
+    const { start:periodStart, end:periodEnd } = periodDates();
+    const licenseStart = parseDate(field(record,['INICIO','INÍCIO','INICIO DA LICENCA','LICENCA INICIO']));
+    let licenseEnd = parseDate(field(record,['RETORNO','TERMINO','TÉRMINO','FIM DA LICENCA']));
+    const licenseDays = Number.parseInt(clean(field(record,['DIAS','DIAS DE LICENCA','DIAS LICENCA'])),10);
+    if (!licenseEnd && licenseStart && Number.isFinite(licenseDays) && licenseDays > 0) {
+      licenseEnd = new Date(licenseStart); licenseEnd.setDate(licenseEnd.getDate() + licenseDays);
+    }
+    if (!licenseStart || !periodStart || !periodEnd) return false;
+    return licenseStart <= periodEnd && (!licenseEnd || licenseEnd >= periodStart);
+  }
+
+  function memberExistedByPeriod(record) {
+    const entry = parseDate(field(record,['ENTRADA','DATA DE ENTRADA']));
+    const { end } = periodDates();
+    return !entry || !end || entry <= end;
   }
 
   function currentRoleReason(current, expected) {
@@ -259,18 +294,13 @@
     if (!record) return 'INATIVO';
     const mismatch = currentRoleReason(field(record,['CARGO','FUNCAO']), config.cargo);
     if (mismatch) return mismatch;
-    const graduation = normalize(field(record,['GRADUACAO','STATUSGRADUACAO']));
+    const graduationPending = isTrue(field(record,['GP','GRADUACAO PENDENTE','STATUS GRADUACAO'])) || normalize(field(record,['GRADUACAO','STATUS GRADUACAO'])).includes('PENDENTE');
     const functionalStatus = normalize(field(record,['STATUS','SITUACAO']));
-    const licenseDays = clean(field(record,['DIASDELICENCA','DIASLICENCA']));
     if (functionalStatus.includes('INATIVO') || functionalStatus.includes('DESLIGADO')) return 'INATIVO';
     if (!belowGoal) return '';
-    if (graduation.includes('PENDENTE')) return 'GRADUAÇÃO PENDENTE';
-    if (functionalStatus.includes('LICENCA') || licenseDays) return 'LICENÇA';
-    const entry = field(record,['ENTRADA','DATADEENTRADA']);
-    const promotion = field(record,['DATAPROMOREB','PROMOREBAIX','DATAPROMOCAO','PROMOCAO','DATADEGRADUACAO']);
-    if (daysSince(entry) < config.recentDays || daysSince(promotion) < config.recentDays) return role === 'coordenadores' ? 'GRADUAÇÃO RECENTE' : role === 'graduadores' ? 'PROMOÇÃO RECENTE' : 'ADAPTAÇÃO';
-    const returnLeave = normalize(field(record,['RL','RETORNODELICENCA']));
-    if (['SIM','TRUE','1'].includes(returnLeave)) return 'RETORNO DE LICENÇA';
+    if (graduationPending) return 'GRADUAÇÃO PENDENTE';
+    if (functionalStatus.includes('LICENCA') || isLicensedInPeriod(record)) return 'LICENÇA';
+    if (isInAdaptation(record)) return 'ADAPTAÇÃO';
     return '';
   }
 
@@ -345,11 +375,14 @@
 
   function mergeMemberRoster(role, submittedRows) {
     if (!state.nexusReady) return submittedRows;
-    const config = ROLE_CONFIG[role], byNick = new Map(submittedRows.map(row => [normalize(row.nick), row]));
+    const config = ROLE_CONFIG[role], byNick = new Map(submittedRows.filter(row => {
+      const record = state.nexusRows.get(normalize(row.nick));
+      return !record || memberExistedByPeriod(record);
+    }).map(row => [normalize(row.nick), row]));
     state.nexusRows.forEach(record => {
       const nick = clean(field(record,['NICKNAME','NICK','USUARIO']));
       const cargo = field(record,['CARGO','FUNCAO']);
-      if (!nick || currentRoleReason(cargo,config.cargo) !== '' || byNick.has(normalize(nick))) return;
+      if (!nick || !memberExistedByPeriod(record) || currentRoleReason(cargo,config.cargo) !== '' || byNick.has(normalize(nick))) return;
       if (role === 'professores') byNick.set(normalize(nick),{nick,cro:0,cac:0,cap:0,acl:0});
       else if (role === 'coordenadores') byNick.set(normalize(nick),{nick,carta:'NÃO ENVIADA',acompanhamentos:0,orientacoes:0,cop:0,cda:0});
       else byNick.set(normalize(nick),{nick,grad1:0,grad2:0});
