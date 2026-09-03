@@ -7,6 +7,10 @@
     nexusApi: 'https://script.google.com/macros/s/AKfycbxwJPauO1fizPCgI5zfkpZSP58KSNJEVbFdX0-w8J4ZtOisV6cleL4J3Ep_gW432JyhmQ/exec',
     warningTopicId: '32246',
     warningSubject: '[PROF] Advertência Interna por Meta Negativa LEIA!',
+    awardsEndpoint: 'https://script.google.com/macros/s/AKfycbzD07rAdy0LrZRC_gG-T9DSuz9uU-CRGZtvuaAxmr7A5F9OBy3EL6bnOwZZgdIh_SYCVQ/exec',
+    awardsToken: 'abacateMelancia',
+    awardsType: 'companhias_semana',
+    awardsCompany: 'Professores',
     postIntervalMs: 3500,
     storageKey: 'CONTABILIDADE_PROF_V1',
     sendStorageKey: 'CONTABILIDADE_PROF_ENVIOS_V1',
@@ -44,7 +48,8 @@
     nick: '', nexusRows: new Map(), nexusHeaders: [], nexusReady: false,
     results: { professores: [], coordenadores: [], graduadores: [] },
     raw: { professores: '', coordenadores: '', graduadores: '' },
-    warnings: [], reviewIds: [], posting: false
+    warnings: [], reviewIds: [], posting: false,
+    highlightCandidates: [], highlightPosting: false
   };
 
   const $ = id => document.getElementById(id);
@@ -132,6 +137,9 @@
       fragment.querySelector('.result-title').textContent = `Tabela de ${config.label}`;
       fragment.querySelector('.process-role').dataset.role = role;
       fragment.querySelector('.copy-table').dataset.role = role;
+      const highlightsButton = fragment.querySelector('.publish-highlights');
+      highlightsButton.hidden = role !== 'professores';
+      highlightsButton.dataset.role = role;
       fragment.querySelector('.role-input').dataset.role = role;
       fragment.querySelector('.result-table').dataset.role = role;
       view.append(fragment);
@@ -419,9 +427,11 @@
     table.hidden = results.length === 0;
     view.querySelector('.empty-table').hidden = results.length > 0;
     view.querySelector('.copy-table').disabled = !results.length;
+    const highlightsButton = view.querySelector('.publish-highlights');
+    if (highlightsButton && role === 'professores') highlightsButton.disabled = weeklyHighlightCandidates().length < 2;
     const counts = status => results.filter(row => row.status === status).length;
     view.querySelector('.metric-total').textContent = results.length;
-    view.querySelector('.metric-best').textContent = counts('EXCELENTE') + counts('MELHOR');
+    view.querySelector('.metric-best').textContent = role === 'professores' ? weeklyHighlightCandidates().length : counts('EXCELENTE') + counts('MELHOR');
     view.querySelector('.metric-regular').textContent = counts('ÓTIMO') + counts('REGULAR');
     view.querySelector('.metric-special').textContent = counts('CASO ESPECIAL');
     view.querySelector('.metric-irregular').textContent = counts('IRREGULAR');
@@ -432,6 +442,106 @@
     const text = [config.columns, ...results.map(row => outputRow(role,row))].map(row => row.join('\t')).join('\n');
     try { await navigator.clipboard.writeText(text); toast('Consulta copiada em colunas para a área de transferência.', 'success'); }
     catch (_) { const area = document.createElement('textarea'); area.value=text; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); toast('Consulta copiada.', 'success'); }
+  }
+
+  function awardDate(value) {
+    const date = parseDate(value);
+    return date ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}` : '';
+  }
+
+  function awardPeriod() {
+    const start = awardDate($('period-start').value), end = awardDate($('period-end').value);
+    return start && end ? `${start} a ${end}` : '';
+  }
+
+  function weeklyHighlightCandidates() {
+    const eligible = new Set(['EXCELENTE','ÓTIMO','REGULAR']);
+    return (state.results.professores || []).filter(row => eligible.has(row.status)).slice(0,2);
+  }
+
+  function openHighlightsReview() {
+    const start = parseDate($('period-start').value), end = parseDate($('period-end').value);
+    if (!start || !end || end.getTime() < start.getTime()) {
+      toast('Informe um período válido antes de confirmar os destaques.', 'warning');
+      return;
+    }
+    const candidates = weeklyHighlightCandidates();
+    if (candidates.length < 2) {
+      toast('A consulta precisa ter pelo menos dois professores elegíveis para enviar os destaques.', 'warning');
+      return;
+    }
+    if (!state.nick) {
+      toast('A conta responsável ainda não foi identificada. Sincronize a NexusList e tente novamente.', 'warning');
+      return;
+    }
+    state.highlightCandidates = candidates;
+    $('highlights-period').innerHTML = `<i class="ti ti-calendar-week"></i> Semana: <strong>${esc(awardPeriod())}</strong> · Companhia: <strong>${esc(CONFIG.awardsCompany)}</strong>`;
+    $('highlights-list').innerHTML = candidates.map((row,index) => `<article class="highlight-candidate"><span>${index+1}º</span><img src="${avatar(row.nick)}" alt="Cabeça de ${esc(row.nick)}"><div><strong>${esc(row.nick)}</strong><small>${Math.round(row.total*100)}% na consulta</small><em>${esc(row.status)}</em></div></article>`).join('');
+    $('highlights-dialog').showModal();
+  }
+
+  function normalizedAwardValue(value) {
+    return normalize(value).replace(/\s+/g,'');
+  }
+
+  async function fetchWeeklyAwards() {
+    const url = new URL(CONFIG.awardsEndpoint);
+    url.searchParams.set('action','list_public');
+    url.searchParams.set('tipo',CONFIG.awardsType);
+    url.searchParams.set('_',String(Date.now()));
+    const response = await fetch(url.toString(),{ method:'GET',cache:'no-store' });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'Não foi possível conferir os destaques já enviados.');
+    return Array.isArray(payload.rows) ? payload.rows : [];
+  }
+
+  async function appendWeeklyAwards(payload) {
+    const response = await fetch(CONFIG.awardsEndpoint,{
+      method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({ token:CONFIG.awardsToken,action:'append',payload })
+    });
+    const text = await response.text();
+    let result;
+    try { result = JSON.parse(text); }
+    catch (_) { throw new Error('O servidor de premiações retornou uma resposta inválida.'); }
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Não foi possível registrar os destaques.');
+    return result;
+  }
+
+  async function sendWeeklyHighlights() {
+    if (state.highlightPosting) return;
+    const candidates = state.highlightCandidates;
+    if (candidates.length !== 2) { toast('Os destaques precisam ser revisados novamente.', 'warning'); return; }
+    const period = awardPeriod();
+    if (!period) { toast('O período da consulta não está preenchido.', 'warning'); return; }
+    state.highlightPosting = true;
+    const button = $('send-highlights'); setBusy(button,true,'Verificando…');
+    try {
+      const rows = await fetchWeeklyAwards();
+      const existing = rows.find(row => normalizedAwardValue(row['Companhia']) === normalizedAwardValue(CONFIG.awardsCompany) && normalizedAwardValue(row['Semana']) === normalizedAwardValue(period));
+      if (existing) {
+        const sameNicks = normalize(existing['Nick1']) === normalize(candidates[0].nick) && normalize(existing['Nick2']) === normalize(candidates[1].nick);
+        throw new Error(sameNicks ? 'Esses destaques já foram enviados para esta semana.' : `Já existe uma postagem de Professores para ${period}. Nenhum dado foi duplicado.`);
+      }
+      button.innerHTML = '<span class="button-loader"></span>Enviando…';
+      await appendWeeklyAwards({
+        tipo:CONFIG.awardsType,
+        data:new Date().toISOString(),
+        nick_responsavel:state.nick,
+        companhia:CONFIG.awardsCompany,
+        semana:period,
+        nick1:candidates[0].nick,
+        nick2:candidates[1].nick
+      });
+      $('highlights-dialog').close();
+      state.highlightCandidates = [];
+      toast(`Destaques enviados: ${candidates[0].nick} e ${candidates[1].nick}.`, 'success');
+    } catch (error) {
+      toast(error.message || 'Falha ao enviar os destaques.', 'error');
+    } finally {
+      state.highlightPosting = false;
+      setBusy(button,false);
+    }
   }
 
   function warningId(role, nick) { return `${role}|${normalize(nick)}|${$('period-start').value}|${$('period-end').value}`; }
@@ -566,14 +676,16 @@
     $('sync-nexus').onclick = () => syncNexus(true);
     document.querySelectorAll('.process-role').forEach(button => button.onclick = () => processRole(button.dataset.role));
     document.querySelectorAll('.copy-table').forEach(button => button.onclick = () => copyRole(button.dataset.role));
+    document.querySelectorAll('.publish-highlights').forEach(button => button.onclick = openHighlightsReview);
     document.querySelectorAll('.role-input').forEach(input => input.addEventListener('input',() => { state.raw[input.dataset.role]=input.value; persist(); }));
     ['period-start','period-end'].forEach(id => $(id).addEventListener('change',() => { persist(); rebuildWarnings(); }));
     $('warning-grid').addEventListener('input', event => { if (event.target.classList.contains('warning-attachment')) captureAttachments(); });
     $('warning-grid').addEventListener('click', event => { const button=event.target.closest('.preview-warning'); if (!button) return; const card=button.closest('[data-warning-id]'); openReview([card.dataset.warningId]); });
     $('review-warnings').onclick = () => openReview(state.warnings.filter(item => !(item.topicSent&&item.privateSent)).map(item => item.id));
     $('send-warnings').onclick = sendReviewedWarnings;
-    document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
-    document.querySelectorAll('.dialog').forEach(dialog => dialog.addEventListener('click',event => { if (event.target===dialog && !state.posting) dialog.close(); }));
+    $('send-highlights').onclick = sendWeeklyHighlights;
+    document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => { if (!state.posting && !state.highlightPosting) $(button.dataset.close).close(); });
+    document.querySelectorAll('.dialog').forEach(dialog => dialog.addEventListener('click',event => { if (event.target===dialog && !state.posting && !state.highlightPosting) dialog.close(); }));
   }
 
   function init() {
