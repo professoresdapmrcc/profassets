@@ -11,7 +11,7 @@
   const DRAFT_STORAGE_KEY = 'FINANCAS_PROF_RASCUNHOS_V3';
   const LEADERSHIP_BASE_DAYS = 30;
   const LEADERSHIP_BASE_MEDALS = 65;
-  const FORUM_POST_INTERVAL_MS = 12000;
+  const FORUM_POST_INTERVAL_MS = 15000;
   const FORUM_MAX_ATTEMPTS = 4;
   const CARGO_CONFIG = Object.freeze({Professor:10, Coordenador:10, Graduador:25, Estagiário:15, Conselheiro:15});
   const PERFORMANCE_VIEWS = Object.freeze({
@@ -378,14 +378,33 @@
     if(/\/(login|login_register|connexion)/i.test(finalUrl) || /você deve estar conectado|you must be logged/i.test(plain)) return {message:'Sua sessão do fórum expirou.', retry:false};
     if(/flood|mensagem tão rapidamente|mensagem tao rapidamente|aguarde.+antes de enviar|esperar.+segundos|wait.+seconds/i.test(plain)) return {message:'O Forumeiros ativou a proteção entre postagens.', retry:true};
     if(/tópico bloqueado|topico bloqueado|não tem permissão|nao tem permissao|não pode responder|nao pode responder/i.test(plain)) return {message:'O tópico está bloqueado ou sua conta não tem permissão para responder.', retry:false};
-    const reachedTopic = new RegExp(`/(?:t${topicID}|t\\d+|p\\d+)(?:[-/?#]|$)`,'i').test(finalUrl);
-    const successMessage = /mensagem foi enviada|mensagem foi publicada|message has been entered successfully/i.test(plain);
-    if(!reachedTopic && !successMessage) return {message:'O fórum não confirmou a publicação desta postagem.', retry:true};
     return null;
+  }
+
+  async function topicSnapshot(topicID){
+    const response = await fetch(`/t${topicID}-?view=newest&_=${Date.now()}`, {credentials:'same-origin', cache:'no-store', redirect:'follow'});
+    const html = await response.text();
+    const rejected = forumResponseError(html, response.url, topicID);
+    if(!response.ok) throw Object.assign(Error(`Não foi possível conferir o tópico ${topicID} (HTTP ${response.status}).`), {retry:false});
+    if(rejected) throw Object.assign(Error(rejected.message), {retry:false});
+    const ids = [];
+    for(const pattern of [
+      /\bid=["']p(\d+)["']/gi,
+      /\bid=["']post[-_]?(\d+)["']/gi,
+      /\bdata-post-id=["'](\d+)["']/gi,
+      /\bname=["'](\d+)["']/gi,
+      /\/p(\d+)(?:[-/?#]|$)/gi,
+      /\/t\d+(?:p\d+)?-[^"'\s#]+#(\d+)/gi
+    ]){
+      let match;
+      while((match = pattern.exec(html)) !== null) ids.push(Number(match[1]));
+    }
+    return {latestPostID:ids.length ? Math.max(...ids) : 0, html, finalUrl:response.url};
   }
 
   async function forumSubmit(item){
     const topicID = item.origin === 'grupos' ? TOPIC_ID_GRUPOS : TOPIC_ID_PERFORMANCE;
+    const before = await topicSnapshot(topicID);
     let lastError = null;
     for(let attempt=1; attempt<=FORUM_MAX_ATTEMPTS; attempt++){
       const body = new URLSearchParams({t:topicID, message:medalBBCode(item), mode:'reply', post:'Enviar'});
@@ -394,11 +413,14 @@
         const html = await response.text();
         if(!response.ok) throw Object.assign(Error(`O fórum respondeu com HTTP ${response.status}.`), {retry:response.status>=500||response.status===429});
         const rejected = forumResponseError(html, response.url, topicID);
-        if(!rejected) return {topicID, finalUrl:response.url};
-        throw Object.assign(Error(rejected.message), {retry:rejected.retry});
+        if(rejected) throw Object.assign(Error(rejected.message), {retry:rejected.retry});
+        await wait(900);
+        const after = await topicSnapshot(topicID);
+        if(after.latestPostID > before.latestPostID) return {topicID, finalUrl:after.finalUrl, postID:after.latestPostID};
+        throw Object.assign(Error(`O envio terminou, mas nenhuma nova postagem apareceu no tópico ${topicID}. O rascunho foi preservado para conferência.`), {retry:false});
       }catch(error){
         lastError = error;
-        if(error.retry === false || attempt === FORUM_MAX_ATTEMPTS) break;
+        if(error.retry !== true || attempt === FORUM_MAX_ATTEMPTS) break;
         await wait(FORUM_POST_INTERVAL_MS);
       }
     }
@@ -433,7 +455,6 @@
       $('preview-dialog').close();
       if(!failed.length){
         toast(`Pronto! As ${sent} postagens foram confirmadas pelo fórum.`, 'success');
-        setTimeout(()=>window.location.assign(`/t${TOPIC_ID_PERFORMANCE}-?view=newest`), 1500);
       }else{
         toast(`${sent} de ${queue.length} postagens confirmadas. ${failed.length} permaneceram nos rascunhos para nova tentativa.`, 'warning');
       }
