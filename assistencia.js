@@ -55,6 +55,12 @@
   const validUrl = value => { try { const url = new URL(clean(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : ''; } catch (_) { return ''; } };
   const hash = value => { let result = 2166136261; for (let i = 0; i < value.length; i += 1) { result ^= value.charCodeAt(i); result = Math.imul(result, 16777619); } return (result >>> 0).toString(36); };
   const punishmentByType = Object.freeze({ erro:'ERRO', adv_verbal:'NOTIFICAÇÃO', adv_interna:'ADVERTÊNCIA INTERNA' });
+  const FINALIZATION_TEMPLATE = `[table class="rank attprof" style="border: none!important; margin: 1em; line-height: 1.4em;"][tr style="border: none;"][td style="border: none!important;"][img]https://www.habbo.com.br/habbo-imaging/badge/b09204s43131s50134s17013s17015e67ac4b5a387bfeccd908069913929bc.gif[/img]
+[font=Poppins][size=15][color=white][b][PROF] ATUALIZADO [{TAG}][/b][/color][/size][color=white]
+Em virtude do Conselho da Assistência, foi realizada uma atualização neste horário.
+Em caso de dúvidas ou erros consulte um conselheiro+.
+
+#SoberaniaROXA[/color][/font][/td][/tr][/table]`;
 
   function toast(message, type = 'info') {
     const labels = { info: 'Informação', success: 'Sucesso', warning: 'Atenção', error: 'Erro' };
@@ -127,6 +133,7 @@
     $('permission-name').value = state.settings.permissionName;
     $('sidebar-permission').textContent = state.settings.permissionName;
     $('manual-permission-badge').textContent = `Permissão: ${state.settings.permissionName}`;
+    if ($('finalization-topic-label')) $('finalization-topic-label').textContent = `Tópico ${state.settings.topicId}`;
     $('role-settings').innerHTML = AVAILABLE_ROLES.map(role => {
       const checked = state.settings.allowedRoles.some(item => roleMatches(item, role));
       return `<label class="role-option"><input type="checkbox" value="${esc(role)}" ${checked ? 'checked' : ''}><span><i class="ti ti-check"></i>${esc(role)}</span></label>`;
@@ -256,14 +263,23 @@
 
   function recordCard(record) {
     const type = recordType(record), nick = clean(record.nick || record.nickname || 'Não identificado');
-    return `<article class="record-card" data-type="${type}"><div class="record-head"><div class="person"><img src="${forumAvatar(nick)}" alt="Cabeça de ${esc(nick)}"><div><strong>${esc(nick)}</strong><small>${esc(record.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(record.punicao || 'Ocorrência')}</span></div><p class="record-motive">${esc(record.motivo || 'Motivo não informado.')}</p><div class="record-meta"><span>Data<strong>${esc(recordDate(record))}</strong></span><span>Situação<strong>${esc(record.decisao || 'PENDENTE')}</strong></span></div><div class="record-actions"><button class="secondary-button compact-button" type="button" data-edit-record="${esc(record.id)}"><i class="ti ti-edit"></i> Ver e alterar</button></div></article>`;
+    const decision = clean(record.decisao || record.status || 'PENDENTE').toUpperCase();
+    const isPending = low(decision) === 'pendente';
+    return `<article class="record-card${isPending ? ' is-pending' : ''}" data-type="${type}" data-decision="${esc(low(decision))}"><div class="record-head"><div class="person"><img src="${forumAvatar(nick)}" alt="Cabeça de ${esc(nick)}"><div><strong>${esc(nick)}</strong><small>${esc(record.cargo || 'Cargo não informado')}</small></div></div><div class="record-badges"><span class="type-badge">${esc(record.punicao || 'Ocorrência')}</span>${isPending ? '<span class="pending-flag"><i class="ti ti-alert-circle"></i>Pendente — requer ação</span>' : ''}</div></div><p class="record-motive">${esc(record.motivo || 'Motivo não informado.')}</p><div class="record-meta"><span>Data<strong>${esc(recordDate(record))}</strong></span><span>Situação<strong class="${isPending ? 'pending-status-text' : ''}">${esc(decision)}</strong></span></div><div class="record-actions"><button class="${isPending ? 'primary-button pending-action' : 'secondary-button'} compact-button" type="button" data-edit-record="${esc(record.id)}"><i class="ti ti-${isPending ? 'switch-3' : 'edit'}"></i> ${isPending ? 'Alterar status' : 'Ver e alterar'}</button></div></article>`;
   }
   function bindRecordEditors(container = document) {
     container.querySelectorAll('[data-edit-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.editRecord); });
   }
   function renderActive() {
     const query = low($('active-search').value);
-    const active = state.records.filter(activeDecision).filter(record => !query || [record.nick, record.cargo, record.punicao, record.motivo].some(value => low(value).includes(query)));
+    const active = state.records.filter(activeDecision)
+      .filter(record => !query || [record.nick, record.cargo, record.punicao, record.motivo].some(value => low(value).includes(query)))
+      .sort((first, second) => {
+        const firstPending = low(first.decisao || first.status || 'PENDENTE') === 'pendente';
+        const secondPending = low(second.decisao || second.status || 'PENDENTE') === 'pendente';
+        if (firstPending !== secondPending) return firstPending ? -1 : 1;
+        return bestHistoryMillis(second) - bestHistoryMillis(first);
+      });
     const total = state.records.filter(activeDecision).length;
     $('active-nav-count').textContent = total; $('active-hero-count').textContent = `${total} ocorrência${total === 1 ? '' : 's'}`;
     $('active-grid').classList.toggle('list-mode', state.activeLayout === 'list');
@@ -393,7 +409,8 @@
   function renderAudit() {
     $('audit-nav-count').textContent = state.auditItems.length;
     $('audit-status').textContent = state.auditItems.length ? `${state.auditItems.length} ação${state.auditItems.length === 1 ? '' : 'ões'} pendente${state.auditItems.length === 1 ? '' : 's'}` : (state.auditReference ? 'Nenhuma divergência encontrada' : 'Auditoria ainda não executada');
-    $('apply-all-audit').disabled = !state.auditItems.length || state.busy;
+    const applyAllButton = $('apply-all-audit');
+    if (applyAllButton) applyAllButton.disabled = !state.auditItems.length || state.busy;
     $('audit-grid').innerHTML = state.auditItems.length ? state.auditItems.map(item => `<article class="audit-card" data-audit-type="${item.kind}"><div class="audit-card-head"><div class="person"><img src="${forumAvatar(item.nick)}" alt=""><div><strong>${esc(item.nick)}</strong><small>${esc(item.cargo || 'Cargo não informado')}</small></div></div><span class="type-badge">${esc(item.kind)}</span></div><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p><div class="audit-card-actions"><button class="secondary-button compact-button" type="button" data-audit-edit="${esc(item.recordId)}"><i class="ti ti-edit"></i> Abrir registro</button><button class="primary-button compact-button" type="button" data-apply-audit="${esc(item.id)}"><i class="ti ti-check"></i> Aplicar sugestão</button></div></article>`).join('') : `<div class="empty"><i class="ti ti-shield-check"></i><h3>${state.auditReference ? 'Tudo conferido' : 'Auditoria não executada'}</h3><p>${state.auditReference ? 'Nenhuma divergência cadastral foi localizada.' : 'Clique em “Executar auditoria” para comparar os registros com os dados externos do NEXUS.'}</p></div>`;
     $('audit-grid').querySelectorAll('[data-audit-edit]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.auditEdit); });
     $('audit-grid').querySelectorAll('[data-apply-audit]').forEach(button => { button.onclick = () => applyAuditSuggestion(button.dataset.applyAudit, button); });
@@ -510,6 +527,77 @@
     const html = await response.text();
     if (/Você deve estar conectado|You must be logged|mode=login/i.test(html) && /login|conect/i.test(html)) throw new Error('A sessão do fórum expirou. Recarregue a página e entre novamente.');
     return true;
+  }
+
+  function finalizationInputs() {
+    return [...$('finalization-tag-group').querySelectorAll('.tag-char')];
+  }
+  function finalizationTag() {
+    return finalizationInputs().map(input => clean(input.value)).join('');
+  }
+  function finalizationBBCode(tag = finalizationTag()) {
+    return FINALIZATION_TEMPLATE.replaceAll('{TAG}', tag || 'TAG');
+  }
+  function updateFinalizationPreview() {
+    $('finalization-preview').textContent = finalizationBBCode();
+    if (/^[A-Za-z0-9]{3}$/.test(finalizationTag())) $('finalization-error').hidden = true;
+  }
+  function bindFinalizationTag() {
+    const inputs = finalizationInputs();
+    inputs.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 1);
+        if (input.value && index < inputs.length - 1) inputs[index + 1].focus();
+        updateFinalizationPreview();
+      });
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Backspace' && !input.value && index > 0) inputs[index - 1].focus();
+      });
+      input.addEventListener('paste', event => {
+        event.preventDefault();
+        const chars = (event.clipboardData?.getData('text') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, inputs.length - index).split('');
+        chars.forEach((char, offset) => { inputs[index + offset].value = char; });
+        inputs[Math.min(index + chars.length, inputs.length - 1)].focus();
+        updateFinalizationPreview();
+      });
+      input.addEventListener('focus', () => input.select());
+    });
+    updateFinalizationPreview();
+  }
+  async function postFinalization(event) {
+    event.preventDefault();
+    if (state.busy) return;
+    const tag = finalizationTag();
+    const topicId = clean(state.settings.topicId || $('topic-id').value || DEFAULT_SETTINGS.topicId);
+    if (!/^[A-Za-z0-9]{3}$/.test(tag)) {
+      $('finalization-tag-group').classList.add('invalid');
+      $('finalization-error').hidden = false;
+      finalizationInputs().find(input => !input.value)?.focus();
+      return;
+    }
+    $('finalization-tag-group').classList.remove('invalid');
+    $('finalization-error').hidden = true;
+    if (!/^\d+$/.test(topicId)) return toast('Configure um ID de tópico válido antes de finalizar.', 'error');
+    if (!window.confirm(`Postar a atualização [${tag}] no tópico ${topicId}?`)) return;
+    const button = $('post-finalization');
+    state.busy = true;
+    setBusy(button, true, 'Publicando…');
+    try {
+      await forumSubmit('/post', { t:topicId, message:finalizationBBCode(tag), mode:'reply', post:'Enviar' });
+      finalizationInputs().forEach(input => { input.value = ''; });
+      updateFinalizationPreview();
+      finalizationInputs()[0].focus();
+      toast(`Atualização [${tag}] publicada. Redirecionando para o tópico ${topicId}…`, 'success');
+      setTimeout(() => {
+        window.location.href = `/t${topicId}-?view=newest`;
+      }, 1600);
+    } catch (error) {
+      console.error(error);
+      toast(error.message || 'Não foi possível postar a atualização.', 'error');
+    } finally {
+      state.busy = false;
+      setBusy(button, false);
+    }
   }
   async function finishFirebase(item, proof, comment, operationRef) {
     const dates = endDateFields(), recordRef = state.db.collection(RECORDS).doc(item.id);
@@ -679,6 +767,9 @@
   async function saveManualRecord(event) {
     event.preventDefault();
     if (state.busy || !state.db) return;
+    // Event.currentTarget e limpo pelo navegador depois que o listener
+    // alcanca o primeiro await. Guarde o formulario antes da gravacao.
+    const form = event.currentTarget;
     const cargo = clean($('manual-cargo').value), nick = clean($('manual-nick').value), type = clean($('manual-type').value);
     const reason = clean($('manual-reason').value), observation = clean($('manual-observation').value);
     const rawAttachment = clean($('manual-attachment').value), attachment = rawAttachment ? validUrl(rawAttachment) : '';
@@ -697,7 +788,7 @@
         sincronizado_sheets:false, tipo_ocorrencia:type, origem:'manual_assistencia',
         anexo:attachment, timestamp:serverTime(), atualizadoEm:serverTime()
       });
-      event.currentTarget.reset(); $('manual-date').value = todayIso();
+      form.reset(); $('manual-date').value = todayIso();
       toast(`Registro de ${nick} salvo no Firebase.`, 'success'); navigate('ativos');
     } catch (error) { console.error(error); toast(`Não foi possível salvar: ${error.message}`, 'error'); }
     finally { state.busy = false; setBusy(button, false); }
@@ -711,10 +802,10 @@
     }, error => { console.error(error); toast(`Falha ao carregar os registros: ${error.message}`, 'error'); });
   }
   function navigate(view) {
-    if (!['ativos','novo','acumulos','auditoria','historico','configuracoes'].includes(view)) view = 'ativos';
+    if (!['ativos','novo','acumulos','auditoria','historico','finalizacao','configuracoes'].includes(view)) view = 'ativos';
     document.querySelectorAll('.view').forEach(element => { element.hidden = element.id !== `view-${view}`; });
     document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', auditoria:'Auditoria Nexus', historico:'Histórico', configuracoes:'Configurações' };
+    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', auditoria:'Auditoria Nexus', historico:'Histórico', finalizacao:'Finalizar quadro', configuracoes:'Configurações' };
     $('page-label').textContent = labels[view] || labels.ativos; $('sidebar').classList.remove('open'); location.hash = view;
   }
   function bind() {
@@ -724,12 +815,15 @@
     $('active-cards-button').onclick = () => { state.activeLayout='cards'; localStorage.setItem(ACTIVE_LAYOUT_KEY,'cards'); renderActive(); };
     $('active-list-button').onclick = () => { state.activeLayout='list'; localStorage.setItem(ACTIVE_LAYOUT_KEY,'list'); renderActive(); };
     $('manual-record-form').onsubmit = saveManualRecord;
+    $('finalization-form').onsubmit = postFinalization;
+    bindFinalizationTag();
     $('refresh-button').onclick = () => { state.recommendations = []; state.auditItems = []; state.auditReference = null; renderRecommendations(); renderAudit(); $('analysis-status').textContent = 'Clique em analisar'; toast('Os dados em tempo real já estão atualizados.', 'info'); };
     $('close-dialog').onclick = $('cancel-dialog').onclick = () => { if (!state.busy) $('accumulation-dialog').close(); };
     $('proof-url').oninput = $('letter-comment').oninput = updatePreviews; $('confirm-accumulation').onclick = postSelected;
     document.querySelectorAll('[data-preview]').forEach(button => button.onclick = () => { document.querySelectorAll('[data-preview]').forEach(item => item.classList.toggle('active', item === button)); $('topic-preview').hidden = button.dataset.preview !== 'topic'; $('pm-preview').hidden = button.dataset.preview !== 'pm'; });
     $('run-audit-button').onclick = runAudit;
-    $('apply-all-audit').onclick = applyAllAuditSuggestions;
+    const applyAllAuditButton = $('apply-all-audit');
+    if (applyAllAuditButton) applyAllAuditButton.onclick = applyAllAuditSuggestions;
     $('record-editor-form').onsubmit = saveRecordEditor;
     $('close-record-editor').onclick = $('dismiss-record-editor').onclick = () => { if (!state.busy) closeRecordEditor(); };
     $('cancel-record-action').onclick = cancelSelectedRecord;
