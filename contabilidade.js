@@ -219,7 +219,14 @@
     (Array.isArray(data.rows) ? data.rows : []).forEach(row => {
       const values = ['values','source','saved'].map(field => row && Array.isArray(row[field]) ? row[field] : null).find(list => list && list.some(value => clean(value))) || [];
       const record = {};
-      state.nexusHeaders.forEach((header,index) => { if (header && record[header] === undefined) record[header] = values[index]; });
+      const valuesByHeader = {};
+      state.nexusHeaders.forEach((header,index) => {
+        if (!header) return;
+        if (!valuesByHeader[header]) valuesByHeader[header] = [];
+        valuesByHeader[header].push(values[index]);
+        if (record[header] === undefined) record[header] = values[index];
+      });
+      record.__valuesByHeader = valuesByHeader;
       const nick = field(record, ['NICKNAME','NICK','USUARIO']);
       if (clean(nick)) state.nexusRows.set(normalize(nick), record);
     });
@@ -232,6 +239,23 @@
       const found = Object.keys(record).find(header => header.includes(key(candidate))); if (found && clean(record[found]) !== '') return record[found];
     }
     return '';
+  }
+
+  function fieldValues(record, candidates) {
+    const source = record && record.__valuesByHeader ? record.__valuesByHeader : {};
+    const candidateKeys = candidates.map(key);
+    const values = [];
+    Object.entries(source).forEach(([header, headerValues]) => {
+      if (!candidateKeys.some(candidate => header === candidate || header.includes(candidate))) return;
+      (Array.isArray(headerValues) ? headerValues : [headerValues]).forEach(value => {
+        if (clean(value) !== '') values.push(value);
+      });
+    });
+    if (!values.length) {
+      const fallback = field(record, candidates);
+      if (clean(fallback) !== '') values.push(fallback);
+    }
+    return values;
   }
 
   function parseDate(value) {
@@ -298,14 +322,17 @@
 
   function nexusException(nick, role, belowGoal) {
     if (!state.nexusReady) return '';
+    // Mudanças funcionais posteriores não anulam a produção já feita na semana.
+    // Assim como na planilha, exceções só substituem o resultado quando a meta falhou.
+    if (!belowGoal) return '';
     const config = ROLE_CONFIG[role], record = state.nexusRows.get(normalize(nick));
     if (!record) return 'INATIVO';
     const mismatch = currentRoleReason(field(record,['CARGO','FUNCAO']), config.cargo);
     if (mismatch) return mismatch;
-    const graduationPending = isTrue(field(record,['GP','GRADUACAO PENDENTE','STATUS GRADUACAO'])) || normalize(field(record,['GRADUACAO','STATUS GRADUACAO'])).includes('PENDENTE');
-    const functionalStatus = normalize(field(record,['STATUS','SITUACAO']));
+    const graduationValues = fieldValues(record,['GP','GRADUACAO PENDENTE','STATUS GRADUACAO','GRADUACAO']);
+    const graduationPending = graduationValues.some(value => isTrue(value) || normalize(value).includes('PENDENTE'));
+    const functionalStatus = normalize(fieldValues(record,['STATUS','SITUACAO']).join(' '));
     if (functionalStatus.includes('INATIVO') || functionalStatus.includes('DESLIGADO')) return 'INATIVO';
-    if (!belowGoal) return '';
     if (graduationPending) return 'GRADUAÇÃO PENDENTE';
     if (functionalStatus.includes('LICENCA') || isLicensedInPeriod(record)) return 'LICENÇA';
     if (isInAdaptation(record)) return 'ADAPTAÇÃO';
