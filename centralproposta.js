@@ -297,7 +297,9 @@
       const [u, l] = await Promise.all([state.db.collection('users').get(), state.db.collection('licencas').where('status_licenca','==','Ativa').get()]);
       
       // FILTRO RIGOROSO: Apenas Status 'Ativo'
-      state.members = u.docs.map(d => ({id: d.id, ...d.data()})).filter(m => m.status === 'Ativo');
+      // O ID do documento precisa prevalecer sobre o campo `id` salvo no perfil,
+      // que em registros antigos pode conter apenas o nickname.
+      state.members = u.docs.map(d => ({...d.data(), id:d.id})).filter(m => m.status === 'Ativo');
       
       state.council = state.members
           .filter(councilParticipant)
@@ -312,8 +314,8 @@
       state.unsubs.forEach(fn=>fn());
       state.unsubs = [
         currentCycle().onSnapshot(s => {if(s.exists){state.cycle=s.data(); renderCycle(); renderProposals(); renderCouncil();}}),
-        proposals().orderBy('ordem','desc').onSnapshot(s => {state.proposals=s.docs.map(d=>({id:d.id,...d.data()})); renderProposals(); renderCouncil();}, liveError),
-        votes().onSnapshot(s => {state.votes=s.docs.map(d=>({id:d.id,...d.data()})); renderProposals(); renderCouncil();}, liveError),
+        proposals().orderBy('ordem','desc').onSnapshot(s => {state.proposals=s.docs.map(d=>({...d.data(),id:d.id})); renderProposals(); renderCouncil();}, liveError),
+        votes().onSnapshot(s => {state.votes=s.docs.map(d=>({...d.data(),id:d.id})); renderProposals(); renderCouncil();}, liveError),
         accessDoc().onSnapshot(s => {
             state.access = s.exists && Array.isArray(s.data().nicknames) ? s.data().nicknames : [];
             if(!roleAllowed(state.profile?.cargo) && !nickAllowed(state.nick)){
@@ -324,7 +326,7 @@
             renderAccess();
         }, liveError),
         cycles().where('status','in',['fechando','erro']).onSnapshot(s => {
-            const d = s.docs[0]; state.pending = d ? {id:d.id, ...d.data()} : null; renderRecovery();
+            const d = s.docs[0]; state.pending = d ? {...d.data(),id:d.id} : null; renderRecovery();
         }, liveError)
       ];
   }
@@ -839,9 +841,9 @@
               nextWeekId ? proposals().where('semanaEnvioId','==',nextWeekId).get() : Promise.resolve({docs:[]})
           ]);
           const cycleData=cycleSnapshot.data()||{};
-          const live=ps.docs.map(d=>({id:d.id,...d.data()}));
+          const live=ps.docs.map(d=>({...d.data(),id:d.id}));
           const orders=new Set(live.map(orderOf));
-          const liveVotes=vs.docs.map(d=>({id:d.id,...d.data()})).filter(v=>orders.has(voteOrder(v)));
+          const liveVotes=vs.docs.map(d=>({...d.data(),id:d.id})).filter(v=>orders.has(voteOrder(v)));
           const props=bk.exists?(bk.data().propostas||[]):live;
           const allVotes=bk.exists?(bk.data().votos||[]):liveVotes;
 
@@ -959,7 +961,7 @@
       finally{ state.busy=false; busy($('finish-manual-cycle'),false); }
   }
 
-  async function loadBackups(selected=''){ const s=await backups().orderBy('timestamp','desc').get(); state.backups=new Map(s.docs.map(d=>[d.id,{id:d.id,...d.data()}])); $('backup-select').innerHTML='<option value="" disabled selected>Selecione um backup</option>'+Array.from(state.backups.values()).map(b=>`<option value="${esc(b.id)}">${esc(b.nome_backup||b.data_formatada||b.id)} · ${esc(b.data_formatada||'')}</option>`).join(''); if(selected&&state.backups.has(selected)){ $('backup-select').value=selected; renderBackup(selected); }else{ $('restore-panel').hidden=true; } }
+  async function loadBackups(selected=''){ const s=await backups().orderBy('timestamp','desc').get(); state.backups=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}])); $('backup-select').innerHTML='<option value="" disabled selected>Selecione um backup</option>'+Array.from(state.backups.values()).map(b=>`<option value="${esc(b.id)}">${esc(b.nome_backup||b.data_formatada||b.id)} · ${esc(b.data_formatada||'')}</option>`).join(''); if(selected&&state.backups.has(selected)){ $('backup-select').value=selected; renderBackup(selected); }else{ $('restore-panel').hidden=true; } }
   window.renderBackup = function(id){ const b=state.backups.get(id); if(!b) return; $('restore-panel').hidden=false; const ps=b.propostas||[]; $('history-grid').innerHTML=ps.length ? ps.map(p=>card(p,{backup:id, votes:votesFor(p,b.votos||[])})).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Backup sem propostas</h3></div>'; }
   async function restore(){ const id=$('backup-select').value, bk=state.backups.get(id); if(!bk||!await ask('Restaurar este backup?','As propostas voltarão para o ciclo atual.','Restaurar',false)) return; busy($('restore-backup'),true,'Restaurando…'); try{ const b=state.db.batch(); (bk.propostas||[]).forEach(p=>{ const data={...p}; delete data.id; b.set(proposals().doc(idOf(p)), {...data, ordem:orderOf(p), ordemId:idOf(p), cicloId:state.cycle.id, restauradoDoBackup:id, restauradoEm:ts(), restauradoPor:state.nick}, {merge:true}); }); (bk.votos||[]).forEach(v=>{ const data={...v}, doc=clean(v.id||`voto_${voteOrder(v)}_${clean(v.Nick||v.nick).replace(/[^a-zA-Z0-9_]/g,'')}`); delete data.id; b.set(votes().doc(doc), {...data, restauradoDoBackup:id}, {merge:true}); }); await b.commit(); toast('Backup restaurado.', 'success'); navigate('propostas'); }catch(e){ toast('Não foi possível restaurar.', 'error'); }finally{ busy($('restore-backup'),false); } }
 
