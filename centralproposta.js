@@ -368,7 +368,7 @@
       }
   }
 
-  function requestWarningAttachment(members){
+  function requestWarningSelection(members){
       let dialog = $('warning-attachment-dialog');
       if(!dialog){
           dialog = document.createElement('dialog');
@@ -377,31 +377,47 @@
           dialog.innerHTML = `
               <div class="dialog-card">
                   <header>
-                      <div><p class="eyebrow">Conselho da Assistência</p><h2>Advertências do ciclo</h2></div>
+                      <div><p class="eyebrow">Encerramento do ciclo</p><h2>Selecionar advertências</h2></div>
                       <button id="warning-attachment-close" class="icon-button" type="button"><i class="ti ti-x"></i></button>
                   </header>
                   <div class="dialog-body">
-                      <p>Os membros abaixo não avaliaram todas as propostas e não estão de licença.</p>
-                      <div id="warning-member-list" class="access-list"></div>
-                      <label class="field wide" style="margin-top:18px">
+                      <p class="warning-selection-note">Selecione a caixa de cada membro que deverá receber advertência. Os membros não selecionados não receberão postagem, MP nem registro na Assistência.</p>
+                      <div id="warning-member-list" class="warning-selection-list"></div>
+                      <p id="warning-selection-summary" class="warning-summary"></p>
+                      <label id="warning-proof-field" class="field wide warning-proof" hidden>
                           <span>Link do print comprobatório</span>
-                          <input id="warning-attachment-url" type="url" placeholder="https://i.imgur.com/exemplo.png" required>
+                          <input id="warning-attachment-url" type="url" placeholder="https://i.imgur.com/exemplo.png">
                       </label>
                       <p id="warning-attachment-error" style="color:#ef6b78;display:none;margin-top:8px">Informe um endereço começando com http:// ou https://.</p>
                   </div>
                   <footer>
                       <button id="warning-attachment-cancel" class="secondary-button" type="button">Cancelar</button>
-                      <button id="warning-attachment-confirm" class="primary-button" type="button"><i class="ti ti-alert-triangle"></i> Continuar fechamento</button>
+                      <button id="warning-attachment-confirm" class="primary-button" type="button"><i class="ti ti-lock-check"></i> Finalizar ciclo</button>
                   </footer>
               </div>`;
           document.body.appendChild(dialog);
       }
 
-      $('warning-member-list').innerHTML = members.map(member =>
-          `<span class="access-chip"><span>${esc(member.cargo)} ${esc(member.nick)} · ${member.answered}/${member.total} avaliadas</span></span>`
-      ).join('');
+      $('warning-member-list').innerHTML = members.length ? members.map((member,index) =>
+          `<label class="warning-choice"><input class="warning-member-checkbox" type="checkbox" data-index="${index}"><span><strong>${esc(member.cargo)} ${esc(member.nick)}</strong><small>${member.answered}/${member.total} proposta(s) avaliadas · faltaram ${member.missing.length}</small></span></label>`
+      ).join('') : '<div class="empty compact"><i class="ti ti-circle-check"></i><h3>Nenhum membro irregular</h3><p>O ciclo pode ser finalizado sem advertências.</p></div>';
       $('warning-attachment-url').value = '';
       $('warning-attachment-error').style.display = 'none';
+
+      const updateSelection = () => {
+          const selected = [...dialog.querySelectorAll('.warning-member-checkbox:checked')];
+          const count = selected.length;
+          $('warning-proof-field').hidden = count === 0;
+          $('warning-attachment-error').style.display = 'none';
+          $('warning-selection-summary').textContent = count
+              ? `${count} membro${count===1?'':'s'} receber${count===1?'á':'ão'} advertência.`
+              : 'Nenhuma advertência será enviada.';
+          $('warning-attachment-confirm').innerHTML = count
+              ? `<i class="ti ti-send"></i> Enviar ${count} e finalizar`
+              : '<i class="ti ti-lock-check"></i> Finalizar ciclo';
+      };
+      dialog.querySelectorAll('.warning-member-checkbox').forEach(input => input.onchange = updateSelection);
+      updateSelection();
       dialog.showModal();
 
       return new Promise(resolve => {
@@ -409,18 +425,34 @@
           const finish = value => {
               if(finished) return;
               finished = true;
+              dialog.oncancel = null;
               if(dialog.open) dialog.close();
               resolve(value);
           };
           $('warning-attachment-confirm').onclick = () => {
-              const url = validAttachmentUrl($('warning-attachment-url').value);
-              if(!url){ $('warning-attachment-error').style.display = 'block'; return; }
-              finish(url);
+              const selected = [...dialog.querySelectorAll('.warning-member-checkbox:checked')]
+                  .map(input => members[Number(input.dataset.index)])
+                  .filter(Boolean);
+              const url = selected.length ? validAttachmentUrl($('warning-attachment-url').value) : '';
+              if(selected.length && !url){ $('warning-attachment-error').style.display = 'block'; return; }
+              finish({members:selected,attachment:url});
           };
-          $('warning-attachment-cancel').onclick = () => finish('');
-          $('warning-attachment-close').onclick = () => finish('');
-          dialog.addEventListener('cancel', event => { event.preventDefault(); finish(''); }, {once:true});
+          $('warning-attachment-cancel').onclick = () => finish(null);
+          $('warning-attachment-close').onclick = () => finish(null);
+          dialog.oncancel = event => { event.preventDefault(); finish(null); };
       });
+  }
+
+  async function retryStep(operation, attempts=3){
+      let lastError;
+      for(let attempt=1;attempt<=attempts;attempt++){
+          try{return await operation();}
+          catch(error){
+              lastError=error;
+              if(attempt<attempts) await new Promise(resolve=>setTimeout(resolve,700*attempt));
+          }
+      }
+      throw lastError;
   }
 
   async function forumSubmit(path, data){
@@ -498,9 +530,8 @@
 
   async function sendMissingAssessmentWarnings(cycle, proposalList, voteList, attachment='', storedMembers=null){
       const members = Array.isArray(storedMembers) ? storedMembers : missingCouncilAssessments(proposalList, voteList);
-      if(!members.length) return 0;
+      if(!members.length) return {requested:0,completed:0,failures:[]};
       let proof = validAttachmentUrl(attachment);
-      if(!proof) proof = await requestWarningAttachment(members);
       if(!proof) throw new Error('O fechamento foi pausado porque o link do print não foi informado.');
 
       const cycleRef = cycles().doc(cycle);
@@ -509,28 +540,38 @@
       const assistanceSent = new Set(Array.isArray(cycleData.advertenciasAssistenciaEnviada) ? cycleData.advertenciasAssistenciaEnviada.map(low) : []);
       const topicSent = new Set(Array.isArray(cycleData.advertenciasTopicoEnviado) ? cycleData.advertenciasTopicoEnviado.map(low) : []);
       const pmSent = new Set(Array.isArray(cycleData.advertenciasMpEnviada) ? cycleData.advertenciasMpEnviada.map(low) : []);
+      const failures=[];
 
       for(const member of members){
-          // O registro da Assistência é obrigatório e acontece antes de qualquer
-          // postagem no tópico ou envio de Mensagem Privada.
-          if(!assistanceSent.has(low(member.nick))){
-              await sendWarningToAssistance(member,cycle,proof);
-              await cycleRef.set({advertenciasAssistenciaEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              assistanceSent.add(low(member.nick));
+          const nickKey=low(member.nick);
+          if(!assistanceSent.has(nickKey)){
+              try{
+                  await retryStep(()=>sendWarningToAssistance(member,cycle,proof));
+                  await cycleRef.set({advertenciasAssistenciaEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
+                  assistanceSent.add(nickKey);
+              }catch(error){
+                  failures.push({nick:member.nick,stage:'Firebase',message:clean(error.message||error)});
+                  continue;
+              }
           }
-          if(!topicSent.has(low(member.nick))){
-              await forumSubmit('/post', {t:'32246',message:warningTopicBBCode(member),mode:'reply',post:'Enviar'});
-              await cycleRef.set({advertenciasTopicoEnviado:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              topicSent.add(low(member.nick));
+          if(!topicSent.has(nickKey)){
+              try{
+                  await retryStep(()=>forumSubmit('/post', {t:'32246',message:warningTopicBBCode(member),mode:'reply',post:'Enviar'}));
+                  await cycleRef.set({advertenciasTopicoEnviado:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
+                  topicSent.add(nickKey);
+              }catch(error){ failures.push({nick:member.nick,stage:'Tópico',message:clean(error.message||error)}); }
           }
-          if(!pmSent.has(low(member.nick))){
-              await forumSubmit('/privmsg', {folder:'inbox',mode:'post',post:'1','username[]':member.nick,subject:'[PROF] CARTA DE ADVERTÊNCIA INTERNA',message:warningPrivateMessageBBCode(member,proof)});
-              await cycleRef.set({advertenciasMpEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
-              pmSent.add(low(member.nick));
+          if(!pmSent.has(nickKey)){
+              try{
+                  await retryStep(()=>forumSubmit('/privmsg', {folder:'inbox',mode:'post',post:'1','username[]':member.nick,subject:'[PROF] CARTA DE ADVERTÊNCIA INTERNA',message:warningPrivateMessageBBCode(member,proof)}));
+                  await cycleRef.set({advertenciasMpEnviada:firebase.firestore.FieldValue.arrayUnion(member.nick)},{merge:true});
+                  pmSent.add(nickKey);
+              }catch(error){ failures.push({nick:member.nick,stage:'MP',message:clean(error.message||error)}); }
           }
       }
-      await cycleRef.set({advertenciasConcluidas:members.length,advertenciasFinalizadasEm:ts(),advertenciasFinalizadasPor:state.nick},{merge:true});
-      return members.length;
+      const completed=members.filter(member=>assistanceSent.has(low(member.nick))&&topicSent.has(low(member.nick))&&pmSent.has(low(member.nick))).length;
+      await cycleRef.set({advertenciasConcluidas:completed,advertenciasFalhas:failures,advertenciasUltimaTentativaEm:ts(),advertenciasUltimaTentativaPor:state.nick,...(!failures.length?{advertenciasFinalizadasEm:ts(),advertenciasFinalizadasPor:state.nick}:{})},{merge:true});
+      return {requested:members.length,completed,failures};
   }
 
   // ==========================================
@@ -785,7 +826,7 @@
       return changed;
   }
   
-  async function processCycle(cycle, next=state.cycle?.id, nextWeekId=state.cycle?.semanaEnvioId){
+  async function processCycle(cycle, next=state.cycle?.id, nextWeekId=state.cycle?.semanaEnvioId, options={}){
       const ref=cycles().doc(cycle);
       try{
           await ref.set({status:'fechando',processamentoPor:state.nick,processamentoEm:ts()},{merge:true});
@@ -806,13 +847,20 @@
 
           if(!bk.exists) await backupRef.set({nome_backup:props.length?`Nº ${Math.min(...props.map(orderOf))} a ${Math.max(...props.map(orderOf))}`:'Ciclo sem propostas',data_formatada:formatDate(new Date()),timestamp:new Date().toISOString(),cicloId:cycle,propostas:props,votos:allVotes,quantidadePropostas:props.length,quantidadeVotos:allVotes.length,criadoEm:ts(),criadoPor:state.nick});
 
-          const warningCount=await sendMissingAssessmentWarnings(
-              cycle,
-              props,
-              allVotes,
-              cycleData.advertenciaAnexo||'',
-              Array.isArray(cycleData.advertenciasAlvos)?cycleData.advertenciasAlvos:null
-          );
+          let warningResult={requested:0,completed:0,failures:[]};
+          if(options.skipWarnings){
+              const manualTargets=Array.isArray(cycleData.advertenciasAlvos)?cycleData.advertenciasAlvos:[];
+              warningResult={requested:manualTargets.length,completed:manualTargets.length,failures:[]};
+              await ref.set({advertenciasManuais:true,advertenciasConcluidas:manualTargets.length,advertenciasFalhas:[],advertenciasFinalizadasEm:ts(),advertenciasFinalizadasPor:state.nick},{merge:true});
+          }else{
+              warningResult=await sendMissingAssessmentWarnings(
+                  cycle,
+                  props,
+                  allVotes,
+                  cycleData.advertenciaAnexo||'',
+                  Array.isArray(cycleData.advertenciasAlvos)?cycleData.advertenciasAlvos:null
+              );
+          }
 
           const leaders=leaderNicks(),approved=[],resolved=new Set(),resolvedOrders=new Set(),resolutions=new Map(),pending=[];
           props.forEach(p=>{const d=decision(p,votesFor(p,allVotes),leaders);if(d.key==='approved'){approved.push(p);resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else if(d.key==='rejected'){resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else pending.push(p);});
@@ -827,6 +875,11 @@
 
           const updatedBackups=await consolidateResolvedBackups(resolutions,allVotes,cycle);
 
+          if(warningResult.failures.length){
+              const details=warningResult.failures.map(item=>`${item.nick} (${item.stage})`).join(', ');
+              throw new Error(`Advertências pendentes: ${details}. Os perfis e a planilha já foram processados; use Retomar envios.`);
+          }
+
           const b=state.db.batch();
           props.forEach(p=>{const proposalRef=proposals().doc(idOf(p));if(resolved.has(idOf(p)))b.delete(proposalRef);else b.set(proposalRef,{cicloId:next,carregadoDoCiclo:cycle,atualizadoEm:ts()},{merge:true});});
           queuedSnapshot.docs.forEach(doc=>{
@@ -837,8 +890,8 @@
           vs.docs.forEach(d=>{if(resolvedOrders.has(voteOrder(d.data())))b.delete(d.ref);});
           await b.commit();
           const activated=queuedSnapshot.docs.filter(doc=>doc.data().cicloId!==cycle && doc.data().cicloId!==next).length;
-          await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,totalFilaAtivada:activated,totalBackupsAtualizados:updatedBackups,totalAdvertencias:warningCount,backupId:cycle},{merge:true});
-          toast(`${resolved.size} resolvida(s), ${pending.length} pendente(s) mantida(s), ${activated} nova(s) liberada(s) e ${warningCount} advertência(s) enviada(s).`,'success');
+          await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,totalFilaAtivada:activated,totalBackupsAtualizados:updatedBackups,totalAdvertencias:warningResult.completed,backupId:cycle},{merge:true});
+          toast(`${resolved.size} resolvida(s), ${pending.length} pendente(s) mantida(s), ${activated} nova(s) liberada(s) e ${warningResult.completed} advertência(s) concluída(s).`,'success');
       }catch(e){
           console.error(e);
           await ref.set({status:'erro',erro:clean(e.message||e),erroEm:ts()},{merge:true}).catch(()=>{});
@@ -849,14 +902,6 @@
   async function closeCycle(){
       if(state.busy) return;
       const isFriday=friday();
-      const ok=await ask(
-          isFriday?'Encerrar o ciclo atual?':'Fechamento fora da sexta-feira',
-          isFriday?'O corte acontecerá agora. Quem não avaliou todas as propostas e não está de licença receberá advertência.':'Hoje não é sexta. O fechamento será extraordinário e as avaliações incompletas gerarão advertência.',
-          isFriday?'Encerrar ciclo':'Fechamento extraordinário',
-          !isFriday
-      );
-      if(!ok) return;
-
       state.busy=true;
       busy($('close-cycle'),true,'Conferindo…');
       try{
@@ -872,18 +917,14 @@
           const currentProposals=proposalSnapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
           const currentOrders=new Set(currentProposals.map(orderOf));
           const currentVotes=voteSnapshot.docs.map(doc=>({id:doc.id,...doc.data()})).filter(vote=>currentOrders.has(voteOrder(vote)));
-          const warningTargets=missingCouncilAssessments(currentProposals,currentVotes);
-          let attachment='';
-
-          if(warningTargets.length){
-              busy($('close-cycle'),false);
-              attachment=await requestWarningAttachment(warningTargets);
-              if(!attachment){
-                  toast('Fechamento cancelado: informe o link do print para aplicar as advertências.','warning');
-                  return;
-              }
-              busy($('close-cycle'),true,'Fechando…');
-          }
+          const warningCandidates=missingCouncilAssessments(currentProposals,currentVotes);
+          busy($('close-cycle'),false);
+          const selection=await requestWarningSelection(warningCandidates);
+          if(!selection){ toast('Fechamento cancelado.','info'); return; }
+          const warningTargets=selection.members;
+          const attachment=selection.attachment;
+          if(!isFriday) toast('Fechamento extraordinário confirmado.','warning');
+          busy($('close-cycle'),true,'Fechando…');
 
           const result=await switchCycle(attachment,warningTargets);
           await processCycle(result.old,result.next,result.nextWeekId);
@@ -894,8 +935,29 @@
           busy($('close-cycle'),false);
       }
   }
-  function renderRecovery(){ $('recovery-panel').hidden = !state.pending; if(state.pending) $('recovery-text').textContent = state.pending.status==='erro' ? `O ciclo ${state.pending.id} parou com erro.` : `Ciclo ${state.pending.id} em processamento.`; }
+  function renderRecovery(){
+      $('recovery-panel').hidden = !state.pending;
+      if(!state.pending) return;
+      const error=clean(state.pending.erro);
+      const completed=Number(state.pending.advertenciasConcluidas||0);
+      const expected=Number(state.pending.advertenciasPrevistas||state.pending.advertenciasAlvos?.length||0);
+      $('recovery-text').textContent = state.pending.status==='erro'
+          ? `${error||`O ciclo ${state.pending.id} parou com erro.`}${expected?` · ${completed}/${expected} advertência(s) concluída(s).`:''}`
+          : `Ciclo ${state.pending.id} em processamento.`;
+  }
   async function resume(){ if(!state.pending||state.busy) return; if(!await ask('Retomar fechamento?','A Central continuará o ciclo pendente.','Retomar',false)) return; state.busy=true; busy($('resume-cycle'),true,'Retomando…'); try{ await processCycle(state.pending.id,state.cycle.id,state.cycle.semanaEnvioId); }catch(e){ toast(e.message||'Falha ao retomar.', 'error'); }finally{ state.busy=false; busy($('resume-cycle'),false); } }
+  async function finishManualCycle(){
+      if(!state.pending||state.busy) return;
+      const ok=await ask('Concluir sem reenviar?','Use esta opção somente porque as advertências pendentes já foram realizadas manualmente. A Central concluirá perfil, planilha e organização do ciclo sem postar nem enviar novas MPs.','Concluir ciclo',true);
+      if(!ok) return;
+      state.busy=true;
+      busy($('finish-manual-cycle'),true,'Concluindo…');
+      try{
+          await processCycle(state.pending.id,state.cycle.id,state.cycle.semanaEnvioId,{skipWarnings:true});
+          toast('Ciclo concluído sem reenviar as advertências manuais.','success');
+      }catch(e){ toast(e.message||'Falha ao concluir o ciclo.','error'); }
+      finally{ state.busy=false; busy($('finish-manual-cycle'),false); }
+  }
 
   async function loadBackups(selected=''){ const s=await backups().orderBy('timestamp','desc').get(); state.backups=new Map(s.docs.map(d=>[d.id,{id:d.id,...d.data()}])); $('backup-select').innerHTML='<option value="" disabled selected>Selecione um backup</option>'+Array.from(state.backups.values()).map(b=>`<option value="${esc(b.id)}">${esc(b.nome_backup||b.data_formatada||b.id)} · ${esc(b.data_formatada||'')}</option>`).join(''); if(selected&&state.backups.has(selected)){ $('backup-select').value=selected; renderBackup(selected); }else{ $('restore-panel').hidden=true; } }
   window.renderBackup = function(id){ const b=state.backups.get(id); if(!b) return; $('restore-panel').hidden=false; const ps=b.propostas||[]; $('history-grid').innerHTML=ps.length ? ps.map(p=>card(p,{backup:id, votes:votesFor(p,b.votos||[])})).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Backup sem propostas</h3></div>'; }
@@ -911,7 +973,7 @@
   function navigate(name){ document.querySelectorAll('.view').forEach(v => v.hidden = v.id!==`view-${name}`); document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===name)); const labels = {propostas:'Central de Propostas', historico:'Histórico de Propostas', configuracoes:'Configurações da Central'}; $('page-label').textContent = labels[name]; location.hash = name; sidebar(false); document.querySelector('.stage').scrollTop = 0; if(name==='historico') loadBackups().catch(()=>{}); }
   function sidebar(open){ $('sidebar').classList.toggle('open', open); }
   function themeVision(){ const applyTheme=(v,s=false)=>{ document.documentElement.dataset.theme=v; $('theme-button').innerHTML=`<i class="ti ${v==='dark'?'ti-sun':'ti-moon'}"></i>`; document.querySelector('meta[name=theme-color]').content = v==='dark'?'#0f0512':'#821f88'; if(s) localStorage.setItem('PROPOSTAS_THEME',v); }; applyTheme(localStorage.getItem('PROPOSTAS_THEME')==='light'?'light':'dark'); $('theme-button').onclick = () => applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true); const applyVision=(sc,c,s=false)=>{ document.documentElement.dataset.scale=sc; document.documentElement.dataset.contrast=c?'high':'standard'; document.querySelectorAll('[data-scale]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scale===sc))); $('contrast-state').textContent=c?'Ativado':'Desativado'; if(s) localStorage.setItem('PROPOSTAS_VISION',JSON.stringify({scale:sc,contrast:c})); }; let pref={}; try{ pref=JSON.parse(localStorage.getItem('PROPOSTAS_VISION')||'{}'); }catch(_){} applyVision(pref.scale||'normal',pref.contrast===true); $('vision-button').onclick=()=>{ $('vision-panel').hidden=!$('vision-panel').hidden; }; document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>applyVision(b.dataset.scale,document.documentElement.dataset.contrast==='high',true)); $('contrast-button').onclick=()=>applyVision(document.documentElement.dataset.scale,document.documentElement.dataset.contrast!=='high',true); $('vision-reset').onclick=()=>applyVision('normal',false,true); }
-  function bind(){ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); $('sidebar-overlay').onclick=()=>sidebar(false); $('open-launch').onclick=()=>$('launch-dialog').showModal(); document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); $('launch-form').onsubmit=saveManual; $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; $('close-cycle').onclick=closeCycle; $('resume-cycle').onclick=resume; $('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.', 'success')).catch(()=>toast('Falha ao atualizar.', 'error')); $('backup-select').onchange=e=>renderBackup(e.target.value); $('restore-backup').onclick=restore; $('access-form').onsubmit=addAccess; document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); }
+  function bind(){ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); $('sidebar-overlay').onclick=()=>sidebar(false); $('open-launch').onclick=()=>$('launch-dialog').showModal(); document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); $('launch-form').onsubmit=saveManual; $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; $('close-cycle').onclick=closeCycle; $('resume-cycle').onclick=resume; $('finish-manual-cycle').onclick=finishManualCycle; $('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.', 'success')).catch(()=>toast('Falha ao atualizar.', 'error')); $('backup-select').onchange=e=>renderBackup(e.target.value); $('restore-backup').onclick=restore; $('access-form').onsubmit=addAccess; document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); }
   
   async function init(){
       const watchdog = setTimeout(() => {
