@@ -622,13 +622,20 @@
           btnForcar = `<button type="button" onclick="abrirModalForcarVoto(${order}, ${backupStr})" title="Forçar Veredito da Liderança" style="margin-left:8px; font-size:10px; background:rgba(192, 38, 211, 0.2); color:#e879f9; padding:3px 8px; border-radius:6px; border:1px solid #d946ef; font-weight:bold; cursor:pointer;"><i class="ti ti-hammer"></i> Forçar</button>`;
       }
 
-      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><button class="trash" onclick="${action}" title="Excluir proposta"><i class="ti ti-trash"></i></button></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>${esc(formatDate(p.criadoEm||p.data||p.Data,true))}</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer${list.length===1?'':'es'}</button></footer></article>`;
+      const edit = opt.backup ? '' : `<button class="icon-button" type="button" onclick="editActive('${esc(idOf(p))}')" title="Editar proposta" aria-label="Editar proposta nº ${order}"><i class="ti ti-pencil"></i></button>`;
+      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><div style="display:flex;gap:6px;align-items:center;">${edit}<button class="trash" onclick="${action}" title="Excluir proposta"><i class="ti ti-trash"></i></button></div></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>${esc(formatDate(p.criadoEm||p.data||p.Data,true))}</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer${list.length===1?'':'es'}</button></footer></article>`;
   }
   
   function renderProposals(){
       const q = low(state.search), list = activeProposals().filter(p => !q || [orderOf(p), p.autor, p.titulo, p.tipo].some(v => low(v).includes(q)));
-      $('proposal-count').textContent = `${list.length} proposta${list.length===1?'':'s'}`;
       $('proposal-grid').innerHTML = list.length ? list.map(p => card(p)).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Nenhuma proposta encontrada</h3></div>';
+      const queued = state.cycle ? state.proposals.filter(p => p.cicloId!==state.cycle.id && (!q || [orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)))) : [];
+      $('proposal-count').textContent = `${list.length} no ciclo atual${queued.length ? ` · ${queued.length} fora do ciclo` : ''}`;
+      let panel=$('queued-proposals-panel');
+      if(!panel){ panel=document.createElement('section'); panel.id='queued-proposals-panel'; panel.className='panel'; $('proposal-grid').closest('.panel').after(panel); }
+      panel.hidden=!queued.length;
+      panel.style.display=queued.length?'':'none';
+      if(queued.length) panel.innerHTML=`<header class="panel-header"><div><p class="eyebrow">Conferência de datas</p><h2>Propostas fora do ciclo atual</h2><p>Confira a data original do envio. Use Editar para corrigir e incluir no ciclo atual quando cabível.</p></div></header><div class="proposal-grid">${queued.map(p=>card(p)).join('')}</div>`;
   }
   
   window.showVotes = (encoded, order) => {
@@ -642,6 +649,50 @@
   };
   
   window.removeActive = async(id, order) => { if(!await ask(`Excluir proposta nº ${order}?`, 'A proposta e todos os pareceres vinculados serão apagados.', 'Excluir proposta')) return; try{ const b=state.db.batch(); b.delete(proposals().doc(id)); state.votes.filter(v=>voteOrder(v)===order).forEach(v=>b.delete(votes().doc(v.id))); await b.commit(); toast('Proposta excluída.', 'success'); }catch(e){ toast('Falha ao excluir.', 'error'); } };
+  window.editActive = id => {
+      const proposal=state.proposals.find(p=>idOf(p)===id);
+      if(!proposal) return toast('Proposta não encontrada. Atualize a página.','error');
+      state.editingProposalId=id;
+      $('form-number').value=orderOf(proposal);
+      $('form-number').readOnly=true;
+      $('form-author').value=clean(proposal.autor||proposal.Autor);
+      $('form-type').value=clean(proposal.tipo||proposal.Categoria);
+      $('form-title').value=clean(proposal.titulo||proposal.Titulo);
+      $('form-content').value=clean(proposal.conteudo||proposal.Conteudo);
+      $('form-original-date').value=originalDateInput(proposal.data||proposal.Data||proposal.criadoEm);
+      $('form-activate-current').checked=proposal.cicloId!==state.cycle?.id;
+      $('launch-dialog').querySelector('h2').textContent=`Editar proposta nº ${orderOf(proposal)}`;
+      $('save-proposal').textContent='Salvar alterações';
+      $('launch-dialog').showModal();
+  };
+  function originalDateInput(value){
+      const date=value?.toDate ? value.toDate() : new Date(value);
+      if(Number.isNaN(date.getTime())) return '';
+      const parts=saoPauloParts(date), pad=n=>String(n).padStart(2,'0');
+      return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
+  }
+  function selectedOriginalDate(){
+      const value=$('form-original-date').value;
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Error('Informe a data original do envio.');
+      const date=new Date(`${value}T12:00:00-03:00`);
+      if(Number.isNaN(date.getTime()) || originalDateInput(date)!==value || value>originalDateInput(new Date())) throw Error('A data original do envio é inválida.');
+      return date;
+  }
+  async function saveOriginalDateAndCycle(ref, originalDate, activate){
+      await state.db.runTransaction(async tx=>{
+          const cycleSnap=await tx.get(currentCycle()), proposalSnap=await tx.get(ref);
+          if(!cycleSnap.exists || cycleSnap.data().status!=='aberto') throw Error('O ciclo atual não está aberto.');
+          if(!proposalSnap.exists) throw Error('A proposta não foi encontrada.');
+          const patch={
+              autor:clean($('form-author').value), tipo:$('form-type').value,
+              titulo:clean($('form-title').value), conteudo:clean($('form-content').value),
+              data:originalDate.toISOString(), ...weekFields(proposalWeek(originalDate)),
+              atualizadoEm:ts(), atualizadoPor:state.nick
+          };
+          if(activate){ patch.cicloId=cycleSnap.data().id; patch.ativadoEm=ts(); patch.ativadoPor=state.nick; }
+          tx.update(ref,patch);
+      });
+  }
   window.removeHistory = async(backup, id, order) => { if(!await ask(`Excluir proposta nº ${order} do histórico?`, 'Será removida apenas deste backup.', 'Excluir do histórico')) return; try{ const ref=backups().doc(backup); await state.db.runTransaction(async tx=>{ const s=await tx.get(ref); if(!s.exists) throw Error(); const d=s.data(), ps=(d.propostas||[]).filter(p=>idOf(p)!==id&&orderOf(p)!==order), vs=(d.votos||[]).filter(v=>voteOrder(v)!==order); tx.update(ref,{propostas:ps, votos:vs, quantidadePropostas:ps.length, quantidadeVotos:vs.length, atualizadoEm:ts()}); }); await loadBackups(backup); toast('Removida do histórico.', 'success'); }catch(e){ toast('Falha ao alterar o histórico.', 'error'); } };
 
   // ==========================================
@@ -745,6 +796,15 @@
       const btn=$('save-proposal'), order=Number($('form-number').value);
       busy(btn,true,'Salvando…');
       try{
+          const originalDate=selectedOriginalDate(), activate=$('form-activate-current').checked;
+          if(state.editingProposalId){
+              const id=state.editingProposalId;
+              await saveOriginalDateAndCycle(proposals().doc(id),originalDate,activate);
+              e.target.reset(); $('launch-dialog').close();
+              state.editingProposalId=null;
+              toast(`Proposta nº ${order} atualizada.`, 'success');
+              return;
+          }
           await ensureCycle();
           const ref=proposals().doc(String(order)), cycleRef=currentCycle();
           let week=proposalWeek(), queued=false;
@@ -767,8 +827,10 @@
               week=refreshedWeek;
               await persist(week);
           }
+          try{ await saveOriginalDateAndCycle(ref,originalDate,activate); }
+          catch(error){ toast(`Proposta nº ${order} gravada, mas a correção da data/ciclo falhou: ${error.message}`,'error'); return; }
           e.target.reset(); $('launch-dialog').close();
-          toast(queued?'Proposta guardada para o próximo ciclo de avaliações.':'Proposta adicionada.','success');
+          toast(activate?'Proposta incluída no ciclo atual.':queued?'Proposta guardada para o próximo ciclo.':'Proposta adicionada.','success');
       }catch(err){ toast(err.message,'error'); }
       finally{ busy(btn,false); }
   }
@@ -975,7 +1037,12 @@
   function navigate(name){ document.querySelectorAll('.view').forEach(v => v.hidden = v.id!==`view-${name}`); document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===name)); const labels = {propostas:'Central de Propostas', historico:'Histórico de Propostas', configuracoes:'Configurações da Central'}; $('page-label').textContent = labels[name]; location.hash = name; sidebar(false); document.querySelector('.stage').scrollTop = 0; if(name==='historico') loadBackups().catch(()=>{}); }
   function sidebar(open){ $('sidebar').classList.toggle('open', open); }
   function themeVision(){ const applyTheme=(v,s=false)=>{ document.documentElement.dataset.theme=v; $('theme-button').innerHTML=`<i class="ti ${v==='dark'?'ti-sun':'ti-moon'}"></i>`; document.querySelector('meta[name=theme-color]').content = v==='dark'?'#0f0512':'#821f88'; if(s) localStorage.setItem('PROPOSTAS_THEME',v); }; applyTheme(localStorage.getItem('PROPOSTAS_THEME')==='light'?'light':'dark'); $('theme-button').onclick = () => applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true); const applyVision=(sc,c,s=false)=>{ document.documentElement.dataset.scale=sc; document.documentElement.dataset.contrast=c?'high':'standard'; document.querySelectorAll('[data-scale]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scale===sc))); $('contrast-state').textContent=c?'Ativado':'Desativado'; if(s) localStorage.setItem('PROPOSTAS_VISION',JSON.stringify({scale:sc,contrast:c})); }; let pref={}; try{ pref=JSON.parse(localStorage.getItem('PROPOSTAS_VISION')||'{}'); }catch(_){} applyVision(pref.scale||'normal',pref.contrast===true); $('vision-button').onclick=()=>{ $('vision-panel').hidden=!$('vision-panel').hidden; }; document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>applyVision(b.dataset.scale,document.documentElement.dataset.contrast==='high',true)); $('contrast-button').onclick=()=>applyVision(document.documentElement.dataset.scale,document.documentElement.dataset.contrast!=='high',true); $('vision-reset').onclick=()=>applyVision('normal',false,true); }
-  function bind(){ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); $('sidebar-overlay').onclick=()=>sidebar(false); $('open-launch').onclick=()=>$('launch-dialog').showModal(); document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); $('launch-form').onsubmit=saveManual; $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; $('close-cycle').onclick=closeCycle; $('resume-cycle').onclick=resume; $('finish-manual-cycle').onclick=finishManualCycle; $('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.', 'success')).catch(()=>toast('Falha ao atualizar.', 'error')); $('backup-select').onchange=e=>renderBackup(e.target.value); $('restore-backup').onclick=restore; $('access-form').onsubmit=addAccess; document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); }
+  function ensureManualFields(){
+      if($('form-original-date')) return;
+      const fields=$('launch-form').querySelector('.form-grid');
+      fields.insertAdjacentHTML('beforeend','<label class="field"><span>Data original do envio</span><input id="form-original-date" type="date" required></label><label class="field"><span>Ciclo de avaliação</span><span style="display:flex;align-items:center;gap:8px"><input id="form-activate-current" type="checkbox" checked> Incluir no ciclo atual</span></label>');
+  }
+  function bind(){ ensureManualFields(); document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view))); $('menu-button').onclick=()=>sidebar(!$('sidebar').classList.contains('open')); $('sidebar-overlay').onclick=()=>sidebar(false); $('open-launch').onclick=()=>{state.editingProposalId=null; $('launch-form').reset(); $('form-number').readOnly=false; $('form-original-date').value=originalDateInput(new Date()); $('form-activate-current').checked=true; $('launch-dialog').querySelector('h2').textContent='Adicionar proposta'; $('save-proposal').textContent='Salvar proposta'; $('launch-dialog').showModal();}; document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close()); $('launch-form').onsubmit=saveManual; $('proposal-search').oninput=e=>{ state.search=e.target.value; renderProposals(); }; $('close-cycle').onclick=closeCycle; $('resume-cycle').onclick=resume; $('finish-manual-cycle').onclick=finishManualCycle; $('refresh-button').onclick=()=>loadPeople().then(()=>toast('Dados atualizados.', 'success')).catch(()=>toast('Falha ao atualizar.', 'error')); $('backup-select').onchange=e=>renderBackup(e.target.value); $('restore-backup').onclick=restore; $('access-form').onsubmit=addAccess; document.querySelectorAll('.dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d) d.close();})); }
   
   async function init(){
       const watchdog = setTimeout(() => {
