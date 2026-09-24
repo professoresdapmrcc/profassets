@@ -7,7 +7,7 @@
   const ROLES = ['Estagiário(a)','Conselheiro(a)','Líder','Vice-Líder','Liderança'];
   const COUNCIL_LIST_EXCLUDED_NICKS = new Set(['pmjrcc']);
   
-  const state = {db:null, auth:null, nick:'', profile:null, access:[], cycle:null, pending:null, proposals:[], votes:[], members:[], council:[], licenses:new Set(), backups:new Map(), search:'', busy:false, unsubs:[]};
+  const state = {db:null, auth:null, nick:'', profile:null, access:[], cycle:null, pending:null, proposals:[], votes:[], members:[], council:[], licenses:new Set(), backups:new Map(), recoveredCycles:new Set(), search:'', busy:false, unsubs:[]};
   
   const $ = id => document.getElementById(id);
   const clean = value => String(value ?? '').trim();
@@ -314,7 +314,7 @@
       state.unsubs.forEach(fn=>fn());
       state.unsubs = [
         currentCycle().onSnapshot(s => {if(s.exists){state.cycle=s.data(); renderCycle(); renderProposals(); renderCouncil();}}),
-        proposals().orderBy('ordem','desc').onSnapshot(s => {state.proposals=s.docs.map(d=>({...d.data(),id:d.id})); renderProposals(); renderCouncil();}, liveError),
+        proposals().orderBy('ordem','desc').onSnapshot(s => {state.proposals=s.docs.map(d=>({...d.data(),id:d.id})); recoverLegacyPendingAssignments(); renderProposals(); renderCouncil();}, liveError),
         votes().onSnapshot(s => {state.votes=s.docs.map(d=>({...d.data(),id:d.id})); renderProposals(); renderCouncil();}, liveError),
         accessDoc().onSnapshot(s => {
             state.access = s.exists && Array.isArray(s.data().nicknames) ? s.data().nicknames : [];
@@ -327,12 +327,105 @@
         }, liveError),
         cycles().where('status','in',['fechando','erro']).onSnapshot(s => {
             const d = s.docs[0]; state.pending = d ? {...d.data(),id:d.id} : null; renderRecovery();
+        }, liveError),
+        backups().orderBy('timestamp','desc').onSnapshot(s => {
+            state.backups = new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));
+            recoverLegacyPendingAssignments();
+            renderPreviousCycles();
+            renderProposals();
         }, liveError)
       ];
   }
   function liveError(error){ console.error(error); toast('Falha na sincronização em tempo real.', 'error'); }
-  function activeProposals(){ return state.cycle ? state.proposals.filter(p => p.cicloId===state.cycle.id) : []; }
+  function activeProposals(){
+      if(!state.cycle) return [];
+      const previousCycleIds=new Set(incompleteBackups().flatMap(backup=>[clean(backup.cicloId),clean(backup.id)]).filter(Boolean));
+      return state.proposals.filter(p => p.cicloId===state.cycle.id && !previousCycleIds.has(clean(p.carregadoDoCiclo)));
+  }
   function votesFor(p, list=state.votes){ return list.filter(v => voteOrder(v)===orderOf(p)); }
+
+  function backupResult(proposal, voteList){
+      if(proposal.statusFinal==='resolvida' && ['approved','rejected'].includes(clean(proposal.resultadoChave))){
+          return {key:proposal.resultadoChave,label:proposal.resultadoFinal,status:proposal.resultadoChave==='approved'?'approved':'rejected'};
+      }
+      return decision(proposal,votesFor(proposal,voteList),leaderNicks());
+  }
+
+  function incompleteBackups(){
+      return Array.from(state.backups.values())
+          .filter(backup => {
+              if(backup.backupCompleto===true) return false;
+              const proposalsList=Array.isArray(backup.propostas)?backup.propostas:[];
+              return backup.backupCompleto===false || proposalsList.some(proposal=>!['approved','rejected'].includes(backupResult(proposal,backup.votos||[]).key));
+          })
+          .sort((a,b)=>String(b.timestamp||b.cicloId||b.id).localeCompare(String(a.timestamp||a.cicloId||a.id)));
+  }
+
+  async function recoverLegacyPendingAssignments(){
+      if(!state.db || !state.cycle || !state.proposals.length || !state.backups.size) return;
+      const backupByCycle=new Map();
+      incompleteBackups().forEach(backup=>{
+          [clean(backup.cicloId),clean(backup.id)].filter(Boolean).forEach(id=>backupByCycle.set(id,backup));
+      });
+      const misplaced=state.proposals.filter(proposal=>{
+          const original=clean(proposal.carregadoDoCiclo);
+          return original && proposal.cicloId===state.cycle.id && backupByCycle.has(original) && !state.recoveredCycles.has(`${original}:${idOf(proposal)}`);
+      });
+      if(!misplaced.length) return;
+      const batch=state.db.batch();
+      misplaced.forEach(proposal=>{
+          const original=clean(proposal.carregadoDoCiclo);
+          state.recoveredCycles.add(`${original}:${idOf(proposal)}`);
+          batch.set(proposals().doc(idOf(proposal)),{cicloId:original,aguardandoDecisaoFinal:true,recuperadoParaCicloOriginalEm:ts(),recuperadoParaCicloOriginalPor:state.nick},{merge:true});
+      });
+      try{
+          await batch.commit();
+          toast(`${misplaced.length} proposta(s) pendente(s) recuperada(s) para o ciclo de origem.`,'info');
+      }catch(error){
+          misplaced.forEach(proposal=>state.recoveredCycles.delete(`${clean(proposal.carregadoDoCiclo)}:${idOf(proposal)}`));
+          console.error('Falha ao recuperar pendências antigas:',error);
+      }
+  }
+
+  function ensurePreviousCyclesStyle(){
+      if($('previous-cycles-style')) return;
+      const style=document.createElement('style');
+      style.id='previous-cycles-style';
+      style.textContent=`
+        #previous-cycles-panel{margin-top:22px}.previous-cycle-block+.previous-cycle-block{margin-top:24px;padding-top:24px;border-top:1px solid var(--border,rgba(255,255,255,.12))}
+        .previous-cycle-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.previous-cycle-header h3{margin:4px 0 5px}.previous-cycle-header p{margin:0;color:var(--muted,#a99bab)}
+        .previous-cycle-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.previous-cycle-status{padding:7px 11px;border:1px solid rgba(232,121,249,.28);border-radius:999px;color:#e879f9;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+        .previous-cycle-actions button[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.35)}
+        @media(max-width:720px){.previous-cycle-header{flex-direction:column}.previous-cycle-actions{justify-content:flex-start}.previous-cycle-actions .primary-button{width:100%}}
+      `;
+      document.head.appendChild(style);
+  }
+
+  function renderPreviousCycles(){
+      const grid=$('proposal-grid');
+      if(!grid) return;
+      ensurePreviousCyclesStyle();
+      let panel=$('previous-cycles-panel');
+      if(!panel){
+          panel=document.createElement('section');
+          panel.id='previous-cycles-panel';
+          panel.className='panel';
+          grid.closest('.panel').after(panel);
+      }
+      const pendingBackups=incompleteBackups();
+      panel.hidden=!pendingBackups.length;
+      panel.style.display=pendingBackups.length?'':'none';
+      if(!pendingBackups.length){ panel.innerHTML=''; return; }
+      panel.innerHTML=`<header class="panel-header"><div><p class="eyebrow">Acompanhamento</p><h2>Pendentes de ciclos anteriores</h2><p>Estas propostas permanecem separadas por semana até a decisão final da Liderança.</p></div></header>`+
+          pendingBackups.map(backup=>{
+              const proposalList=Array.isArray(backup.propostas)?backup.propostas:[];
+              const voteList=Array.isArray(backup.votos)?backup.votos:[];
+              const unresolved=proposalList.filter(proposal=>!['approved','rejected'].includes(backupResult(proposal,voteList).key));
+              const complete=proposalList.length>0 && unresolved.length===0;
+              const label=clean(backup.nome_backup||backup.data_formatada||backup.cicloId||backup.id);
+              return `<section class="previous-cycle-block"><div class="previous-cycle-header"><div><p class="eyebrow">Ciclo anterior</p><h3>${esc(label)}</h3><p>${unresolved.length?`${unresolved.length} proposta${unresolved.length===1?'':'s'} aguardando decisão final.`:'Todas as propostas estão resolvidas. O backup pode ser concluído.'}</p></div><div class="previous-cycle-actions"><span class="previous-cycle-status">${unresolved.length?'Pendente':'Pronto para concluir'}</span><button class="primary-button" type="button" onclick="completePreviousBackup('${esc(backup.id)}')" ${complete?'':'disabled'}><i class="ti ti-archive"></i> Gerar backup completo</button></div></div><div class="proposal-grid">${proposalList.map(proposal=>card(proposal,{backup:backup.id,votes:voteList,pendingCycle:true})).join('')}</div></section>`;
+          }).join('');
+  }
 
   // ==========================================
   // ADVERTÊNCIAS POR AVALIAÇÃO INCOMPLETA
@@ -623,19 +716,22 @@
       }
 
       const edit = opt.backup ? '' : `<button class="icon-button" type="button" onclick="editActive('${esc(idOf(p))}')" title="Editar proposta" aria-label="Editar proposta nº ${order}"><i class="ti ti-pencil"></i></button>`;
-      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><div style="display:flex;gap:6px;align-items:center;">${edit}<button class="trash" onclick="${action}" title="Excluir proposta"><i class="ti ti-trash"></i></button></div></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>${esc(formatDate(p.criadoEm||p.data||p.Data,true))}</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer${list.length===1?'':'es'}</button></footer></article>`;
+      const remove = opt.pendingCycle ? '' : `<button class="trash" onclick="${action}" title="Excluir proposta"><i class="ti ti-trash"></i></button>`;
+      return `<article class="proposal-card" data-status="${result.status}"><div class="card-top"><div class="card-id"><span class="number">Nº ${order||'—'}</span><div class="card-title"><span>${esc(type)}</span><h3 title="${esc(title)}">${esc(title)}</h3><p>Por ${esc(author)}</p></div></div><div style="display:flex;gap:6px;align-items:center;">${edit}${remove}</div></div><div style="display:flex; align-items:center; margin-bottom:12px;"><span class="status" style="margin-bottom:0;">${esc(result.label)}</span>${btnForcar}</div><p class="content">${esc(content)}</p><footer class="card-footer"><small>${esc(formatDate(p.criadoEm||p.data||p.Data,true))}</small><button onclick="showVotes('${encoded}',${order})"><i class="ti ti-messages"></i> ${list.length} parecer${list.length===1?'':'es'}</button></footer></article>`;
   }
   
   function renderProposals(){
       const q = low(state.search), list = activeProposals().filter(p => !q || [orderOf(p), p.autor, p.titulo, p.tipo].some(v => low(v).includes(q)));
       $('proposal-grid').innerHTML = list.length ? list.map(p => card(p)).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Nenhuma proposta encontrada</h3></div>';
-      const queued = state.cycle ? state.proposals.filter(p => p.cicloId!==state.cycle.id && (!q || [orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)))) : [];
+      const previousCycleIds=new Set(incompleteBackups().flatMap(backup=>[clean(backup.cicloId),clean(backup.id)]).filter(Boolean));
+      const queued = state.cycle ? state.proposals.filter(p => p.cicloId!==state.cycle.id && !previousCycleIds.has(clean(p.cicloId)) && (!q || [orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)))) : [];
       $('proposal-count').textContent = `${list.length} no ciclo atual${queued.length ? ` · ${queued.length} fora do ciclo` : ''}`;
       let panel=$('queued-proposals-panel');
       if(!panel){ panel=document.createElement('section'); panel.id='queued-proposals-panel'; panel.className='panel'; $('proposal-grid').closest('.panel').after(panel); }
       panel.hidden=!queued.length;
       panel.style.display=queued.length?'':'none';
       if(queued.length) panel.innerHTML=`<header class="panel-header"><div><p class="eyebrow">Conferência de datas</p><h2>Propostas fora do ciclo atual</h2><p>Confira a data original do envio. Use Editar para corrigir e incluir no ciclo atual quando cabível.</p></div></header><div class="proposal-grid">${queued.map(p=>card(p)).join('')}</div>`;
+      renderPreviousCycles();
   }
   
   window.showVotes = (encoded, order) => {
@@ -770,12 +866,12 @@
                   const propostas=(doc.data().propostas||[]).map(proposta=>{
                       if(orderOf(proposta)!==parseInt(ordem)) return proposta;
                       const result=decision(proposta,votos.filter(v=>voteOrder(v)===parseInt(ordem)),leaderNicks());
-                      if(result.key==='approved'||result.key==='rejected') return {...proposta,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:new Date().toISOString()};
+                       if(result.key==='approved'||result.key==='rejected') return {...proposta,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:new Date().toISOString(),resolvidaAposFechamento:true};
                       const updated={...proposta};
                       delete updated.statusFinal; delete updated.resultadoChave; delete updated.resultadoFinal; delete updated.resolvidaEmIso;
                       return updated;
                   });
-                  tx.update(docRef,{votos,propostas,quantidadeVotos:votos.length,resultadosAtualizadosEm:ts(),resultadosAtualizadosPor:state.nick});
+                   tx.update(docRef,{votos,propostas,quantidadeVotos:votos.length,backupCompleto:false,statusBackup:'pendente',resultadosAtualizadosEm:ts(),resultadosAtualizadosPor:state.nick});
               });
               toast("Resultado alterado no cofre de backup!", "success");
               await loadBackups(backupId);
@@ -785,6 +881,62 @@
           }
       } catch (err) {
           console.error(err); toast("Erro ao forçar decisão.", "error");
+      }
+  };
+
+  window.completePreviousBackup = async function(backupId){
+      if(state.busy) return;
+      const backup=state.backups.get(backupId);
+      if(!backup) return toast('Backup não encontrado. Atualize a página.','error');
+      const proposalList=Array.isArray(backup.propostas)?backup.propostas:[];
+      const voteList=Array.isArray(backup.votos)?backup.votos:[];
+      const normalized=proposalList.map(proposal=>{
+          const result=backupResult(proposal,voteList);
+          return ['approved','rejected'].includes(result.key)
+              ? {...proposal,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:proposal.resolvidaEmIso||new Date().toISOString()}
+              : proposal;
+      });
+      const unresolved=normalized.filter(proposal=>!['approved','rejected'].includes(clean(proposal.resultadoChave)));
+      if(unresolved.length) return toast(`Ainda existem ${unresolved.length} proposta(s) sem decisão final.`,'warning');
+      if(!await ask('Gerar backup completo deste ciclo?','O mesmo backup será atualizado com os novos pareceres e resultados. As propostas concluídas sairão da área de pendências.','Concluir backup',false)) return;
+
+      state.busy=true;
+      try{
+          const approvedLate=normalized.filter(proposal=>proposal.resultadoChave==='approved' && proposal.resolvidaAposFechamento===true);
+          for(const proposal of approvedLate) await reward(proposal,backup.cicloId||backup.id);
+
+          if(approvedLate.length && backup.tratamentoPendenteEnviado!==true){
+              const response=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'enviarTratamento',cicloId:backup.cicloId||backup.id,dados:approvedLate.map(p=>({ordem:p.ordem,autor:p.autor,categoria:p.tipo,titulo:p.titulo,conteudo:p.conteudo}))})});
+              if(!response.ok) throw Error('A planilha de tratamento não confirmou as propostas aprovadas.');
+              await backups().doc(backupId).set({tratamentoPendenteEnviado:true,tratamentoPendenteEnviadoEm:ts()},{merge:true});
+          }
+
+          const orders=new Set(normalized.map(orderOf));
+          const cycleId=clean(backup.cicloId||backup.id);
+          const [proposalSnapshot,voteSnapshot]=await Promise.all([
+              proposals().where('cicloId','==',cycleId).get(),
+              votes().get()
+          ]);
+          const batch=state.db.batch();
+          proposalSnapshot.docs.forEach(doc=>{ if(orders.has(orderOf(doc.data()))) batch.delete(doc.ref); });
+          voteSnapshot.docs.forEach(doc=>{ if(orders.has(voteOrder(doc.data()))) batch.delete(doc.ref); });
+          batch.set(backups().doc(backupId),{
+              propostas:normalized.map(proposal=>({...proposal,finalizacaoProcessada:true})),
+              votos:voteList,
+              quantidadePropostas:normalized.length,
+              quantidadeVotos:voteList.length,
+              backupCompleto:true,
+              statusBackup:'completo',
+              concluidoEm:ts(),
+              concluidoPor:state.nick
+          },{merge:true});
+          await batch.commit();
+          toast('Backup completo gerado e pendências encerradas.','success');
+      }catch(error){
+          console.error(error);
+          toast(error.message||'Não foi possível concluir o backup.','error');
+      }finally{
+          state.busy=false;
       }
   };
 
@@ -909,7 +1061,7 @@
           const props=bk.exists?(bk.data().propostas||[]):live;
           const allVotes=bk.exists?(bk.data().votos||[]):liveVotes;
 
-          if(!bk.exists) await backupRef.set({nome_backup:props.length?`Nº ${Math.min(...props.map(orderOf))} a ${Math.max(...props.map(orderOf))}`:'Ciclo sem propostas',data_formatada:formatDate(new Date()),timestamp:new Date().toISOString(),cicloId:cycle,propostas:props,votos:allVotes,quantidadePropostas:props.length,quantidadeVotos:allVotes.length,criadoEm:ts(),criadoPor:state.nick});
+          if(!bk.exists) await backupRef.set({nome_backup:props.length?`Nº ${Math.min(...props.map(orderOf))} a ${Math.max(...props.map(orderOf))}`:'Ciclo sem propostas',data_formatada:formatDate(new Date()),timestamp:new Date().toISOString(),cicloId:cycle,propostas:props,votos:allVotes,quantidadePropostas:props.length,quantidadeVotos:allVotes.length,backupCompleto:false,statusBackup:'processando',criadoEm:ts(),criadoPor:state.nick});
 
           let warningResult={requested:0,completed:0,failures:[]};
           if(options.skipWarnings){
@@ -945,7 +1097,11 @@
           }
 
           const b=state.db.batch();
-          props.forEach(p=>{const proposalRef=proposals().doc(idOf(p));if(resolved.has(idOf(p)))b.delete(proposalRef);else b.set(proposalRef,{cicloId:next,carregadoDoCiclo:cycle,atualizadoEm:ts()},{merge:true});});
+          props.forEach(p=>{
+              const proposalRef=proposals().doc(idOf(p));
+              if(resolved.has(idOf(p))) b.delete(proposalRef);
+              else b.set(proposalRef,{cicloId:cycle,aguardandoDecisaoFinal:true,cicloAtualQuandoPendente:next,atualizadoEm:ts()},{merge:true});
+          });
           queuedSnapshot.docs.forEach(doc=>{
               if(doc.data().cicloId!==cycle && doc.data().cicloId!==next){
                   b.set(doc.ref,{cicloId:next,ativadoNoCiclo:next,ativadoEm:ts()},{merge:true});
@@ -954,8 +1110,16 @@
           vs.docs.forEach(d=>{if(resolvedOrders.has(voteOrder(d.data())))b.delete(d.ref);});
           await b.commit();
           const activated=queuedSnapshot.docs.filter(doc=>doc.data().cicloId!==cycle && doc.data().cicloId!==next).length;
+          await backupRef.set({
+              backupCompleto:pending.length===0,
+              statusBackup:pending.length?'pendente':'completo',
+              propostasPendentes:pending.map(orderOf),
+              atualizadoEm:ts(),
+              atualizadoPor:state.nick,
+              ...(pending.length?{}:{concluidoEm:ts(),concluidoPor:state.nick})
+          },{merge:true});
           await ref.set({status:'fechado',finalizadoEm:ts(),finalizadoPor:state.nick,totalPropostas:props.length,totalAprovadas:approved.length,totalResolvidas:resolved.size,totalTransferidas:pending.length,totalFilaAtivada:activated,totalBackupsAtualizados:updatedBackups,totalAdvertencias:warningResult.completed,backupId:cycle},{merge:true});
-          toast(`${resolved.size} resolvida(s), ${pending.length} pendente(s) mantida(s), ${activated} nova(s) liberada(s) e ${warningResult.completed} advertência(s) concluída(s).`,'success');
+          toast(`${resolved.size} resolvida(s), ${pending.length} pendente(s) separada(s) no ciclo anterior, ${activated} nova(s) liberada(s) e ${warningResult.completed} advertência(s) concluída(s).`,'success');
       }catch(e){
           console.error(e);
           await ref.set({status:'erro',erro:clean(e.message||e),erroEm:ts()},{merge:true}).catch(()=>{});
