@@ -345,8 +345,18 @@
   function votesFor(p, list=state.votes){ return list.filter(v => voteOrder(v)===orderOf(p)); }
 
   function backupResult(proposal, voteList){
-      if(proposal.statusFinal==='resolvida' && ['approved','rejected'].includes(clean(proposal.resultadoChave))){
-          return {key:proposal.resultadoChave,label:proposal.resultadoFinal,status:proposal.resultadoChave==='approved'?'approved':'rejected'};
+      const explicitKey=low(proposal.resultadoChave);
+      const explicitLabel=low([
+          proposal.resultadoFinal,
+          proposal.resultado,
+          proposal.statusResultado,
+          proposal.decisaoFinal
+      ].filter(Boolean).join(' '));
+      if(explicitKey==='approved' || explicitLabel.includes('aprovad')){
+          return {key:'approved',label:clean(proposal.resultadoFinal||proposal.resultado||'Aprovada pela Liderança'),status:'approved'};
+      }
+      if(explicitKey==='rejected' || explicitLabel.includes('reprovad')){
+          return {key:'rejected',label:clean(proposal.resultadoFinal||proposal.resultado||'Reprovada pela Liderança'),status:'rejected'};
       }
       return decision(proposal,votesFor(proposal,voteList),leaderNicks());
   }
