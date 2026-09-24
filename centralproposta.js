@@ -351,13 +351,13 @@
       return decision(proposal,votesFor(proposal,voteList),leaderNicks());
   }
 
+  function needsLeadershipResolution(result){
+      return ['none','tie','lideranca'].includes(clean(result?.key));
+  }
+
   function incompleteBackups(){
       return Array.from(state.backups.values())
-          .filter(backup => {
-              if(backup.backupCompleto===true) return false;
-              const proposalsList=Array.isArray(backup.propostas)?backup.propostas:[];
-              return backup.backupCompleto===false || proposalsList.some(proposal=>!['approved','rejected'].includes(backupResult(proposal,backup.votos||[]).key));
-          })
+          .filter(backup => backup.backupCompleto===false)
           .sort((a,b)=>String(b.timestamp||b.cicloId||b.id).localeCompare(String(a.timestamp||a.cicloId||a.id)));
   }
 
@@ -420,7 +420,7 @@
           pendingBackups.map(backup=>{
               const proposalList=Array.isArray(backup.propostas)?backup.propostas:[];
               const voteList=Array.isArray(backup.votos)?backup.votos:[];
-              const unresolved=proposalList.filter(proposal=>!['approved','rejected'].includes(backupResult(proposal,voteList).key));
+              const unresolved=proposalList.filter(proposal=>needsLeadershipResolution(backupResult(proposal,voteList)));
               const complete=proposalList.length>0 && unresolved.length===0;
               const label=clean(backup.nome_backup||backup.data_formatada||backup.cicloId||backup.id);
               return `<section class="previous-cycle-block"><div class="previous-cycle-header"><div><p class="eyebrow">Ciclo anterior</p><h3>${esc(label)}</h3><p>${unresolved.length?`${unresolved.length} proposta${unresolved.length===1?'':'s'} aguardando decisão final.`:'Todas as propostas estão resolvidas. O backup pode ser concluído.'}</p></div><div class="previous-cycle-actions"><span class="previous-cycle-status">${unresolved.length?'Pendente':'Pronto para concluir'}</span><button class="primary-button" type="button" onclick="completePreviousBackup('${esc(backup.id)}')" ${complete?'':'disabled'}><i class="ti ti-archive"></i> Gerar backup completo</button></div></div><div class="proposal-grid">${proposalList.map(proposal=>card(proposal,{backup:backup.id,votes:voteList,pendingCycle:true})).join('')}</div></section>`;
@@ -706,7 +706,7 @@
   }
 
   function card(p, opt={}){
-      const list = opt.votes || votesFor(p), calculated = decision(p, list, leaderNicks()), result = p.statusFinal==='resolvida'&&p.resultadoFinal ? {key:clean(p.resultadoChave||calculated.key),label:clean(p.resultadoFinal),status:p.resultadoChave==='rejected'?'rejected':'approved'} : calculated, order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
+      const list = opt.votes || votesFor(p), calculated = decision(p, list, leaderNicks()), result = p.statusFinal==='resolvida'&&p.resultadoFinal ? {key:clean(p.resultadoChave||calculated.key),label:clean(p.resultadoFinal),status:p.resultadoChave==='approved'?'approved':p.resultadoChave==='rejected'?'rejected':calculated.status} : calculated, order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
       
       // BOTÃO DA LIDERANÇA
       let btnForcar = '';
@@ -892,11 +892,11 @@
       const voteList=Array.isArray(backup.votos)?backup.votos:[];
       const normalized=proposalList.map(proposal=>{
           const result=backupResult(proposal,voteList);
-          return ['approved','rejected'].includes(result.key)
+          return !needsLeadershipResolution(result)
               ? {...proposal,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:proposal.resolvidaEmIso||new Date().toISOString()}
               : proposal;
       });
-      const unresolved=normalized.filter(proposal=>!['approved','rejected'].includes(clean(proposal.resultadoChave)));
+      const unresolved=normalized.filter(proposal=>needsLeadershipResolution(backupResult(proposal,voteList)));
       if(unresolved.length) return toast(`Ainda existem ${unresolved.length} proposta(s) sem decisão final.`,'warning');
       if(!await ask('Gerar backup completo deste ciclo?','O mesmo backup será atualizado com os novos pareceres e resultados. As propostas concluídas sairão da área de pendências.','Concluir backup',false)) return;
 
@@ -1079,7 +1079,17 @@
           }
 
           const leaders=leaderNicks(),approved=[],resolved=new Set(),resolvedOrders=new Set(),resolutions=new Map(),pending=[];
-          props.forEach(p=>{const d=decision(p,votesFor(p,allVotes),leaders);if(d.key==='approved'){approved.push(p);resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else if(d.key==='rejected'){resolved.add(idOf(p));resolvedOrders.add(orderOf(p));resolutions.set(orderOf(p),d);}else pending.push(p);});
+          props.forEach(p=>{
+              const d=decision(p,votesFor(p,allVotes),leaders);
+              if(needsLeadershipResolution(d)){
+                  pending.push(p);
+                  return;
+              }
+              if(d.key==='approved') approved.push(p);
+              resolved.add(idOf(p));
+              resolvedOrders.add(orderOf(p));
+              resolutions.set(orderOf(p),d);
+          });
           for(const p of approved) await reward(p,cycle);
 
           const cs=await ref.get();
