@@ -137,7 +137,7 @@
       return history.slice().sort((a, b) => String(firstValue(b.data, b.dataFim, b.fim, b.timestamp) || '').localeCompare(String(firstValue(a.data, a.dataFim, a.fim, a.timestamp) || ''))).slice(0, 2).map(item => {
         const value = firstValue(item.porcentagem, item.percentual, item.porcentagemTotal, item.meta);
         const date = firstValue(item.data, item.dataFim, item.fim, item.timestamp);
-        return `${percentLabel(value)}${date ? ` - ${dateLabel(date)}` : ''}`;
+        return `${percentLabel(value)}${date ? ` - ${esc(String(date))}` : ''}`;
       }).join(' | ');
     }
     const value = firstValue(performance.porcentagemTotal, performance.meta, profile.meta);
@@ -150,9 +150,9 @@
   };
   const performancePanel = (performance, profile, item) => {
     const weeks = performanceWeeks(performance, profile);
-    const careerLessons = firstValue(performance.aulasCargoAtual, performance.aulasAplicadasCargo, performance.aulasAplicadas, profile.aulasAplicadas, 0);
-    const rows = weeks.map((week, index) => `<article class="nca-week-card"><header><strong>Semana ${weeks.length - index}</strong><span>${dateLabel(firstValue(week.data, week.dataFim, week.fim, week.timestamp))}</span></header><div><b>${percentLabel(firstValue(week.porcentagem, week.percentual, week.porcentagemTotal, week.meta))}</b><small>Meta cumprida</small></div><div><b>${numberLabel(firstValue(week.aulasAplicadas, week.aulas, week.quantidade, week.graduacoes))}</b><small>${item.cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas'}</small></div></article>`).join('');
-    return `<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-summary"><div class="nca-info"><span>Aulas aplicadas na carreira atual</span><strong>${numberLabel(careerLessons)}</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>${weeks.length}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0)}</strong></div><div class="nca-info"><span>Licenças registradas</span><strong>${licenseHistory(item.nick).length}</strong></div><div class="nca-info"><span>Maior resultado</span><strong>${esc(item.cargo === 'graduador' ? numberLabel(firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidade)) : percentLabel(firstValue(performance.maiorPorcentagem, performance.maiorPercentual)))}</strong></div></div><h4>Metas por semana</h4><div class="nca-week-grid">${rows || '<div class="nca-locked">Nenhum histórico semanal de metas foi encontrado.</div>'}</div></section>`;
+    const careerLessons = firstValue(performance.aulasCargoAtual, performance.aulasAplicadasCargo, performance.aulasAplicadas, profile.aulasAplicadas);
+    const rows = weeks.map((week, index) => `<article class="nca-week-card"><header><strong>Semana ${weeks.length - index}</strong><span>${esc(firstValue(week.data, week.dataFim, week.fim, week.timestamp) || '—')}</span></header><div><b>${percentLabel(firstValue(week.porcentagem, week.percentual, week.porcentagemTotal, week.meta))}</b><small>Meta cumprida</small></div><div><b>${numberLabel(firstValue(week.aulasAplicadas, week.aulas, week.quantidade, week.graduacoes))}</b><small>${item.cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas'}</small></div>${Array.isArray(week.metrics) ? week.metrics.map((value, index) => `<div><b>${numberLabel(value)}</b><small>${esc(CONSULTA_SHEETS[item.cargo]?.metrics[index] || 'Atividade')}</small></div>`).join('') : ''}</article>`).join('');
+    return `<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-summary"><div class="nca-info"><span>Aulas aplicadas na carreira atual</span><strong>${numberLabel(careerLessons)}</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>${weeks.length}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0)}</strong></div><div class="nca-info"><span>Licenças registradas</span><strong>${licenseHistory(item.nick).length}</strong></div><div class="nca-info"><span>Maior resultado</span><strong>${esc(item.cargo === 'graduador' ? numberLabel(firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidade)) : percentLabel(firstValue(performance.maiorPorcentagem, performance.maiorPercentual)))}</strong></div></div><h4>Histórico de licenças</h4><p>${esc(licenseSummary(item.nick))}</p><h4>Metas por semana</h4><p class="nca-save-state">Fonte: ${esc(performance.sourceLabel || 'Não disponível')} · Consultado em ${performance.consultedAt ? esc(new Date(performance.consultedAt).toLocaleString('pt-BR')) : 'não informado'}. Atualização da origem: ${performance.atualizadoEm ? dateLabel(performance.atualizadoEm) : 'não informada'}.</p><div class="nca-week-grid">${rows || '<div class="nca-locked">Nenhum histórico semanal de metas foi encontrado.</div>'}</div></section>`;
   };
   const parseCsv = csv => {
     const rows = []; let row = []; let value = ''; let quoted = false;
@@ -195,6 +195,58 @@
   const promotionVotesFor = item => S.promotionVotes.filter(v => sent(v) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo);
   const ownProposalVote = item => S.proposalVotes.find(v => norm(v.Nick ?? v.nick) === norm(S.nick) && Number(v.Ordem ?? v.ordem) === item.ordem);
   const proposalVotesFor = item => S.proposalVotes.filter(v => sent(v) && Number(v.Ordem ?? v.ordem) === item.ordem);
+
+
+  const localDraftKey = () => 'NCA_DRAFTS:' + norm(S.nick) + ':' + (S.cycle?.id || 'current');
+  function readLocalDrafts() {
+    try { return JSON.parse(localStorage.getItem(localDraftKey()) || '{}'); } catch (_) { return {}; }
+  }
+  function storeLocalDraft(kind, item, draft) {
+    const records = readLocalDrafts();
+    const id = kind + ':' + (kind === 'promotion' ? item.cargo + ':' + item.nick : item.ordem);
+    records[id] = { kind, item, draft, savedAt: new Date().toISOString() };
+    try { localStorage.setItem(localDraftKey(), JSON.stringify(records)); }
+    catch (_) { setSaveLabel('Não foi possível guardar uma cópia neste navegador.', 'fa-triangle-exclamation'); }
+    return id;
+  }
+  async function recoverLocalDrafts() {
+    if (S.recovering || !S.db || !cycleOpen()) return;
+    S.recovering = true;
+    try {
+      for (const record of Object.values(readLocalDrafts())) {
+        const item = record.kind === 'promotion'
+          ? S.promotions.find(item => item.nick === record.item.nick && item.cargo === record.item.cargo)
+          : S.proposals.find(item => item.ordem === record.item.ordem);
+        if (!item) continue;
+        const vote = record.kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item);
+        const remoteDate = docTime(vote?.rascunho?.atualizadoEm || vote?.atualizadoEm);
+        if (remoteDate && remoteDate.getTime() > Date.parse(record.savedAt)) { const records = readLocalDrafts(); delete records[record.kind + ':' + (record.kind === 'promotion' ? item.cargo + ':' + item.nick : item.ordem)]; try { localStorage.setItem(localDraftKey(), JSON.stringify(records)); } catch (_) {} continue; }
+        await saveDraft(record.kind, item, record.draft);
+      }
+    } finally { S.recovering = false; }
+  }
+  function deadlineText() {
+    const end = docTime(S.cycle?.end || S.cycle?.fim);
+    if (!end) return 'Prazo de promoções não informado.';
+    const remaining = end.getTime() - Date.now();
+    const hours = Math.max(0, Math.ceil(remaining / 3600000));
+    return 'Promoções: ' + end.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília) · ' + (remaining <= 0 ? 'Prazo encerrado' : hours <= 24 ? 'Atenção: faltam ' + hours + ' horas' : 'Faltam ' + Math.ceil(hours / 24) + ' dias');
+  }
+  function showReceipt(receipt = S.lastReceipt) {
+    if (!receipt) return toast('Nenhum comprovante disponível neste navegador.');
+    showModal('Comprovante de envio', '<p>Envio confirmado pelo Firebase.</p><p>' + esc(receipt.user) + ' · ' + esc(new Date(receipt.at).toLocaleString('pt-BR')) + '</p><p>Referência: ' + esc(receipt.id) + '</p>' + receipt.items.map(item => '<article class="nca-comment"><strong>' + esc(item.title) + '</strong><p>' + esc(item.verdict) + '</p><p>' + esc(item.comment) + '</p></article>').join('') + '<button id="nca-download-receipt" class="nca-button">Baixar comprovante</button>');
+    document.getElementById('nca-download-receipt').onclick = () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = 'comprovante-' + receipt.id + '.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+  }
+  function bindHistory(vote) {
+    const form = document.getElementById('nca-evaluation-form');
+    if (!form) return;
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'nca-button nca-button--ghost'; button.textContent = 'Meu histórico de alterações';
+    button.onclick = () => showModal('Meu histórico de alterações', (vote?.historico || []).map(record => '<article class="nca-comment"><strong>' + esc(record.veredito || record.Veredito || '') + '</strong><p>' + esc(record.dissertacao || record.Comentario || '') + '</p><small>' + esc(record.salvoEm || '') + '</small></article>').join('') || '<p>Nenhuma versão anterior enviada.</p>');
+    form.append(button);
+  }
 
   function toast(message, error = false) {
     const node = document.getElementById('nca-toast');
@@ -294,9 +346,13 @@
     const percentage = total ? Math.round((done / total) * 100) : 0;
     return `<aside class="nca-progress-card"><div class="nca-progress-head"><span>Seu progresso</span><strong>${done} de ${total}</strong></div><div class="nca-progress-track"><span style="width:${percentage}%"></span></div><small>${percentage}% das avaliações disponíveis foram enviadas.</small></aside>`;
   }
+  const answered = vote => {
+    const value = vote?.rascunho ?? vote ?? {};
+    return Boolean(String(value.veredito ?? value.Veredito ?? '').trim() && String(value.dissertacao ?? value.comentario ?? value.Comentario ?? '').trim());
+  };
   const completeDrafts = () => [
-    ...S.promotions.filter(item => { const vote = ownPromotionVote(item); return vote?.status === 'rascunho' && vote.rascunho?.veredito && vote.rascunho?.dissertacao; }).map(item => ({ kind: 'promotion', item })),
-    ...S.proposals.filter(item => { const vote = ownProposalVote(item); return vote?.status === 'rascunho' && vote.rascunho?.veredito && vote.rascunho?.comentario; }).map(item => ({ kind: 'proposal', item })),
+    ...S.promotions.filter(item => { const vote = ownPromotionVote(item); return vote?.rascunho && answered(vote); }).map(item => ({ kind: 'promotion', item })),
+    ...S.proposals.filter(item => { const vote = ownProposalVote(item); return vote?.rascunho && answered(vote); }).map(item => ({ kind: 'proposal', item })),
   ];
 
   function shell(content, title = 'Central de <em>Avaliações.</em>', description = 'Analise propostas e candidatos sem sair do Forumeiros.') {
@@ -309,6 +365,14 @@
     batchButton.disabled = completeDrafts().length === 0;
     batchButton.onclick = submitAllDrafts;
     document.querySelector('.nca-actions')?.prepend(batchButton);
+    const summaryButton = document.createElement('button');
+    summaryButton.className = 'nca-button nca-button--ghost';
+    summaryButton.textContent = 'Resumo de pendências';
+    summaryButton.onclick = () => showPendingSummary();
+    const deadline = document.createElement('p'); deadline.className = 'nca-save-state'; deadline.textContent = deadlineText();
+    root.querySelector('.nca-hero').after(deadline);
+    if (S.lastReceipt) { const receipt = document.createElement('button'); receipt.className = 'nca-button'; receipt.textContent = 'Último comprovante'; receipt.onclick = () => showReceipt(); summaryButton.before(receipt); }
+    batchButton.before(summaryButton);
   }
 
   function renderHome() {
@@ -354,7 +418,7 @@
         const url = `https://docs.google.com/spreadsheets/d/${consultaConfig.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(month)}`;
         try { weekly = consultaWeeks(await (await fetch(url, { cache: 'no-store' })).text(), consultaConfig, item.nick); } catch (error) { console.warn('Consulta semanal indisponível:', error); }
       }
-      const merged = weekly.length ? { ...data, semanas: weekly, historicoMetas: weekly } : data;
+      const merged = { ...(weekly.length ? { ...data, semanas: weekly, historicoMetas: weekly } : data), sourceLabel: weekly.length ? 'Planilha de desempenho · ' + CONSULTA_MONTHS[new Date().getMonth()] : 'Registro de desempenho do Nexus', consultedAt: new Date().toISOString() };
       S.performance.set(id, merged);
       return merged;
     } catch (error) {
@@ -370,15 +434,16 @@
 
   function promotionIndex(items, active) {
     const filters = [['todos', 'Todos'], ['professor', 'Professores'], ['coordenador', 'Coordenadores'], ['graduador', 'Graduadores']];
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}">${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}">${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function promotionEditor(item, performance = {}) {
     const profile = memberProfile(item);
     const vote = ownPromotionVote(item) || {};
-    const draft = vote.rascunho || {};
-    const verdict = clean(draft.veredito || vote.veredito);
-    const comment = clean(draft.dissertacao || vote.dissertacao);
+    const local = readLocalDrafts()['promotion:' + item.cargo + ':' + item.nick];
+    const draft = local?.draft ? { veredito: local.draft.veredito, dissertacao: local.draft.comentario } : vote.rascunho || {};
+    const verdict = clean(draft.veredito ?? vote.veredito);
+    const comment = clean(draft.dissertacao ?? vote.dissertacao);
     const votes = promotionVotesFor(item);
     const promote = votes.filter(v => plain(v.veredito).includes('promov')).length;
     const keep = votes.filter(v => plain(v.veredito).includes('mant')).length;
@@ -429,7 +494,8 @@
       document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length;
       scheduleDraft('promotion', item);
     });
-    form.onsubmit = event => submitPromotion(event, item);
+    form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
+    form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
   }
 
   async function renderPromotions() {
@@ -440,6 +506,7 @@
     const performance = await loadPerformance(item);
     shell(`<div class="nca-compare-bar"><div class="nca-compare-list">${S.compare.map(candidate => `<span class="nca-compare-chip">${esc(candidate.nick)}<button data-remove-compare="${esc(candidate.nick)}" data-cargo="${candidate.cargo}"><i class="fa-solid fa-xmark"></i></button></span>`).join('') || '<span class="nca-save-state">Selecione até três membros para comparar.</span>'}</div><button id="nca-show-compare" class="nca-button nca-button--primary" ${S.compare.length < 2 ? 'disabled' : ''}><i class="fa-solid fa-scale-balanced"></i>Comparar ${S.compare.length || ''}</button></div><div class="nca-workspace">${promotionIndex(items, S.selectedPromotion)}${promotionEditor(item, performance)}</div>`, 'Avaliação de <em>promoções.</em>', 'Pareceres visíveis ao Conselho e comparação livre de até três membros.');
     bindPromotion(items, item, performance);
+    bindHistory(ownPromotionVote(item));
     document.getElementById('nca-show-compare').onclick = () => { S.screen = 'compare'; render(); };
     root.querySelectorAll('[data-remove-compare]').forEach(button => button.onclick = () => { S.compare = S.compare.filter(candidate => !(norm(candidate.nick) === norm(button.dataset.removeCompare) && candidate.cargo === button.dataset.cargo)); render(); });
   }
@@ -458,24 +525,35 @@
   }
 
   async function renderCompare() {
+    const datasets = await Promise.all(S.compare.map(item => loadPerformance(item)));
+    const weeks = [...new Set(datasets.flatMap((data, index) => performanceWeeks(data, memberProfile(S.compare[index])).map(week => String(week.data || week.dataFim || week.fim || ''))))].filter(Boolean);
+    if (!weeks.includes(S.compareWeek)) S.compareWeek = weeks[0] || '';
+    const weekControls = '<label class="nca-week-select">Semana da comparação<select id="nca-compare-week">' + weeks.map(week => '<option ' + (week === S.compareWeek ? 'selected' : '') + ' value="' + esc(week) + '">' + esc(week) + '</option>').join('') + '</select></label>';
     const cards = await Promise.all(S.compare.map(async item => {
-      const profile = memberProfile(item); const performance = await loadPerformance(item); const hasLicense = licenseHistory(item.nick).length > 0; const votes = promotionVotesFor(item);
-      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(profile.dataPromocao || profile.ultimaPromocao)}</dd></div><div><dt>Meta recente</dt><dd>${esc(performance.porcentagemTotal ?? performance.meta ?? '—')}</dd></div><div><dt>Aulas aplicadas</dt><dd>${esc(performance.aulasAplicadas ?? '—')}</dd></div><div><dt>Licença</dt><dd>${hasLicense ? 'Histórico' : 'Não'}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
+      const profile = memberProfile(item); const performance = await loadPerformance(item); const selectedWeek = performanceWeeks(performance, profile).find(week => String(week.data || week.dataFim || week.fim || '') === S.compareWeek); const votes = promotionVotesFor(item);
+      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(item.cargo === 'professor' ? firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada) : careerDate(profile, 'promov') || careerDate(profile, 'rebaix'))}</dd></div><div><dt>Meta na semana selecionada</dt><dd>${selectedWeek ? percentLabel(firstValue(selectedWeek.porcentagem, selectedWeek.percentual, selectedWeek.porcentagemTotal, selectedWeek.meta)) : 'Sem registro'}</dd></div><div><dt>Aulas aplicadas</dt><dd>${selectedWeek ? numberLabel(firstValue(selectedWeek.aulasAplicadas, selectedWeek.aulas, selectedWeek.graduacoes)) : 'Sem registro'}</dd></div><div><dt>Licença</dt><dd>${esc(licenseSummary(item.nick))}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
     }));
-    shell(`<div class="nca-compare-bar"><button id="nca-back-promotions" class="nca-button"><i class="fa-solid fa-arrow-left"></i>Voltar às promoções</button><span class="nca-save-state">${S.compare.length} de 3 membros selecionados</span></div><section class="nca-compare-grid">${cards.join('')}</section>`, 'Comparador de <em>membros.</em>', 'Compare desempenho, situação e votação dos candidatos selecionados.');
+    shell(`<div class="nca-compare-bar"><button id="nca-back-promotions" class="nca-button"><i class="fa-solid fa-arrow-left"></i>Voltar às promoções</button><span class="nca-save-state">${S.compare.length} de 3 membros selecionados</span></div><div class="nca-compare-controls">${[0, 1, 2].map(slot => `<label>Membro ${slot + 1}<select data-compare-slot="${slot}"><option value="">Selecione um membro</option>${S.promotions.map((candidate, index) => `<option value="${index}" ${S.compare[slot] === candidate ? 'selected' : ''}>${esc(candidate.nick)} · ${cargoLabel(candidate.cargo)}</option>`).join('')}</select></label>`).join('')}</div>${weekControls}<section class="nca-compare-grid">${cards.join('')}</section>`, 'Comparador de <em>membros.</em>', 'Compare desempenho, situação e votação dos candidatos selecionados.');
+    document.getElementById('nca-compare-week').onchange = event => { S.compareWeek = event.target.value; render(); };
+    root.querySelectorAll('[data-compare-slot]').forEach(select => select.onchange = () => {
+      const candidate = S.promotions[Number(select.value)]; const slot = Number(select.dataset.compareSlot);
+      if (select.value && S.compare.includes(candidate) && S.compare[slot] !== candidate) { render(); return toast('Este membro já está no comparador.', true); }
+      if (select.value) S.compare[slot] = candidate; else S.compare.splice(slot, 1);
+      S.compare = S.compare.filter(Boolean); render();
+    });
     document.getElementById('nca-back-promotions').onclick = () => { S.screen = 'promotions'; render(); };
     root.querySelectorAll('[data-comments]').forEach(button => button.onclick = () => showPromotionComments(S.compare.find(item => norm(item.nick) === norm(button.dataset.comments) && item.cargo === button.dataset.cargo)));
   }
 
   function proposalIndex(items, active) {
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function proposalEditor(item) {
     const vote = ownProposalVote(item) || {};
     const draft = vote.rascunho || {};
-    const verdict = clean(draft.veredito || vote.Veredito || vote.veredito);
-    const comment = clean(draft.comentario || vote.Comentario || vote.comentario);
+    const verdict = clean(draft.veredito ?? vote.Veredito ?? vote.veredito);
+    const comment = clean(draft.comentario ?? vote.Comentario ?? vote.comentario);
     const otherVotes = proposalVotesFor(item);
     const canSee = sent(vote);
     return `<section class="nca-editor"><div class="nca-editor-scroll"><header class="nca-editor-head"><div><p class="nca-kicker">Proposta nº ${item.ordem}</p><h2>${esc(item.titulo)}</h2><p>${esc(item.autor)} · ${esc(item.tipo)} · ${dateLabel(item.data)}</p></div><span class="nca-status-pill ${sent(vote) ? 'is-sent' : ''}">${sent(vote) ? 'Parecer enviado' : draft.veredito || draft.comentario ? 'Rascunho' : 'Pendente'}</span></header><section class="nca-section"><div class="nca-section-title"><h3>Conteúdo da proposta</h3></div><div class="nca-proposal-body">${esc(item.conteudo)}</div></section><form id="nca-evaluation-form"><section class="nca-section"><div class="nca-section-title"><h3>Seu veredito</h3></div><div class="nca-verdicts">${PROPOSAL_VERDICTS.map(([value, icon]) => `<label class="nca-choice"><input type="radio" name="veredito" value="${value}" ${verdict === value ? 'checked' : ''}><span><i class="fa-solid ${icon}"></i>${value}</span></label>`).join('')}</div></section><section class="nca-section"><label class="nca-field-label" for="nca-comment">Justificativa obrigatória <small><span id="nca-count">${comment.length}</span>/5000</small></label><textarea id="nca-comment" class="nca-textarea" maxlength="5000" placeholder="Explique os fundamentos do seu parecer e os ajustes necessários.">${esc(comment)}</textarea></section><section class="nca-section"><div class="nca-section-title"><h3>Pareceres do Conselho</h3></div>${canSee ? `<div class="nca-comments">${otherVotes.map(v => `<article class="nca-comment"><header><strong>${esc(v.Nick ?? v.nick ?? 'Conselho')}</strong><span>${esc(v.Veredito ?? v.veredito)}</span></header><p>${esc(v.Comentario ?? v.comentario ?? 'Sem comentário.')}</p></article>`).join('') || '<div class="nca-locked">Nenhum outro parecer foi enviado.</div>'}</div>` : '<div class="nca-locked"><i class="fa-solid fa-lock"></i><br>Envie seu próprio parecer para consultar os votos dos demais.</div>'}</section><footer class="nca-editor-actions"><span id="nca-save-label" class="nca-save-state"><i class="fa-solid fa-cloud"></i>${draft.veredito || draft.comentario ? 'Rascunho recuperado. Envie para contabilizar.' : 'O preenchimento será salvo automaticamente.'}</span><button class="nca-button nca-button--gold" type="submit"><i class="fa-solid fa-paper-plane"></i>${sent(vote) ? 'Atualizar avaliação' : 'Enviar avaliação'}</button></footer></form></div></section>`;
@@ -488,8 +566,10 @@
     shell(`<div class="nca-workspace">${proposalIndex(S.proposals, S.selectedProposal)}${proposalEditor(item)}</div>`, 'Avaliação de <em>propostas.</em>', 'Leia a proposta completa e registre um parecer fundamentado.');
     root.querySelectorAll('[data-index]').forEach(button => button.onclick = () => { S.selectedProposal = Number(button.dataset.index); render(); });
     const form = document.getElementById('nca-evaluation-form');
+    bindHistory(ownProposalVote(item));
     form.addEventListener('input', () => { document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length; scheduleDraft('proposal', item); });
-    form.onsubmit = event => submitProposal(event, item);
+    form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
+    form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
   }
 
   function formDraft() {
@@ -501,8 +581,27 @@
 
   function scheduleDraft(kind, item) {
     clearTimeout(S.saveTimer);
+    const draft = formDraft();
+    storeLocalDraft(kind, item, draft);
+    const dot = root.querySelector('.nca-index-item.is-active .nca-dot');
+    if (dot) { dot.classList.toggle('is-done', Boolean(draft.veredito && draft.comentario)); dot.classList.toggle('is-draft', !draft.veredito || !draft.comentario); dot.title = draft.veredito && draft.comentario ? 'Resposta completa' : 'Resposta incompleta'; }
     setSaveLabel('Salvando rascunho…', 'fa-spinner fa-spin');
-    S.saveTimer = setTimeout(() => saveDraft(kind, item), 700);
+    S.pendingDrafts ||= new Map();
+    const draftKey = kind + ':' + (item.nick || item.ordem);
+    S.pendingDrafts.set(draftKey, { kind, item, draft });
+    if (!S.savingDrafts) {
+      S.savingDrafts = true;
+      S.saveQueue = (async () => {
+        try {
+          while (S.pendingDrafts.size) {
+            await new Promise(resolve => setTimeout(resolve, 350));
+            const [id, pending] = S.pendingDrafts.entries().next().value;
+            S.pendingDrafts.delete(id);
+            await saveDraft(pending.kind, pending.item, pending.draft);
+          }
+        } finally { S.savingDrafts = false; }
+      })();
+    }
   }
 
   function setSaveLabel(text, icon = 'fa-cloud') {
@@ -510,10 +609,10 @@
     if (label) label.innerHTML = `<i class="fa-solid ${icon}"></i>${esc(text)}`;
   }
 
-  async function saveDraft(kind, item) {
-    const draft = formDraft();
-    if (!draft.veredito && !draft.comentario) return setSaveLabel('Preencha a avaliação para criar o rascunho.');
+  async function saveDraft(kind, item, draft = formDraft()) {
     try {
+      if (!cycleOpen()) throw new Error('Prazo encerrado. A cópia local foi preservada.');
+      if (!navigator.onLine) throw new Error('Sem conexão. Rascunho guardado neste navegador.');
       if (kind === 'promotion') {
         const ref = S.db.collection('avaliacoes_nexus').doc(`${item.cargo}_${item.nick}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`);
         const existing = ownPromotionVote(item);
@@ -525,9 +624,18 @@
         await ref.set({ Nick: S.nick, Ordem: item.ordem, status: sent(existing) ? 'enviado' : 'rascunho', rascunho: { veredito: draft.veredito, comentario: draft.comentario, atualizadoEm: new Date().toISOString() }, rascunhoAtualizadoEm: serverTime() }, { merge: true });
         upsert(S.proposalVotes, ref.id, { ...(existing || {}), Nick: S.nick, Ordem: item.ordem, status: sent(existing) ? 'enviado' : 'rascunho', rascunho: { veredito: draft.veredito, comentario: draft.comentario, atualizadoEm: new Date().toISOString() } });
       }
+      const batchButton = document.getElementById('nca-submit-all');
+      if (batchButton) { batchButton.disabled = completeDrafts().length === 0; batchButton.textContent = 'Enviar preenchidos (' + completeDrafts().length + ')'; }
+      const local = readLocalDrafts();
+      const localId = kind + ':' + (kind === 'promotion' ? item.cargo + ':' + item.nick : item.ordem);
+      if (JSON.stringify(local[localId]?.draft) === JSON.stringify(draft)) {
+        delete local[localId];
+        try { localStorage.setItem(localDraftKey(), JSON.stringify(local)); } catch (_) {}
+      }
+      S.draftError = Object.keys(readLocalDrafts()).length > 0;
       setSaveLabel(`Rascunho salvo às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Ainda não foi enviado.`, 'fa-circle-check');
     } catch (error) {
-      console.error(error); setSaveLabel('Falha ao salvar. Seu texto continua nesta tela.', 'fa-triangle-exclamation'); toast(error.message || 'Falha ao salvar rascunho.', true);
+      S.draftError = true; console.error(error); setSaveLabel('Falha ao salvar. Seu texto continua nesta tela.', 'fa-triangle-exclamation'); toast(error.message || 'Falha ao salvar rascunho.', true);
     }
   }
 
@@ -543,8 +651,8 @@
   }
 
   function historyOf(record, fields) {
-    const history = Array.isArray(record?.historico) ? record.historico.slice(-19) : [];
-    if (sent(record)) history.push({ ...Object.fromEntries(fields.map(field => [field, record[field] ?? ''])), salvoEm: new Date().toISOString() });
+    const history = Array.isArray(record?.historico) ? record.historico.slice() : [];
+    if (sent(record)) history.push({ ...Object.fromEntries(fields.map(field => [field, record[field] ?? ''])), salvoEm: docTime(record.atualizadoEm || record.timestamp || record.Timestamp)?.toISOString() || new Date().toISOString() });
     return history;
   }
 
@@ -587,7 +695,43 @@
     finally { S.busy = false; }
   }
 
-  async function submitAllDrafts() {
+  async function showPendingSummary() {
+    await S.saveQueue;
+    const entries = [
+      ...S.promotions.map((item, index) => ({ kind: 'promotion', index, title: item.nick, vote: ownPromotionVote(item) })),
+      ...S.proposals.map((item, index) => ({ kind: 'proposal', index, title: `Proposta ${item.ordem}: ${item.titulo}`, vote: ownProposalVote(item) })),
+    ].map(entry => {
+      const value = entry.vote?.rascunho ?? entry.vote ?? {};
+      const missing = [];
+      if (!String(value.veredito ?? value.Veredito ?? '').trim()) missing.push('veredito');
+      if (!String(value.dissertacao ?? value.comentario ?? value.Comentario ?? '').trim()) missing.push('justificativa');
+      return { ...entry, missing, submitted: sent(entry.vote) && !entry.vote?.rascunho };
+    });
+    const pending = entries.filter(entry => entry.missing.length).length;
+    const ready = completeDrafts().length;
+    const submitted = entries.filter(entry => entry.submitted).length;
+    showModal('Resumo de pendências', `<p>${ready} prontas para enviar · ${pending} incompletas · ${submitted} já enviadas.</p><p>Verde: resposta completa. Amarelo: faltam campos obrigatórios. Os rascunhos só contam como votos após o envio.</p>${S.draftError ? '<p role="alert">Há uma falha ao salvar um rascunho. Volte à avaliação e tente salvar novamente.</p>' : ''}<div class="nca-pending-list">${entries.map(entry => `<article class="nca-pending-row"><i aria-hidden="true" class="nca-dot ${entry.missing.length ? 'is-draft' : 'is-done'}"></i><div><strong>${esc(entry.title)}</strong><p>${entry.missing.length ? `Falta: ${entry.missing.join(' e ')}.` : entry.submitted ? 'Já enviada.' : 'Completa, aguardando envio.'}</p></div><button class="nca-button nca-button--ghost" data-pending-kind="${entry.kind}" data-pending-index="${entry.index}">${entry.missing.length ? 'Completar' : 'Revisar'}</button></article>`).join('') || '<p>Nenhuma avaliação disponível.</p>'}</div><p>${pending ? 'As avaliações incompletas continuarão como pendentes.' : 'Todas as respostas estão completas.'}</p><button id="nca-confirm-batch" class="nca-button nca-button--gold" ${!ready || S.draftError || !cycleOpen() ? 'disabled' : ''}>Confirmar envio de ${ready} avaliação(ões)</button>`);
+    root.querySelectorAll('[data-pending-kind]').forEach(button => button.onclick = () => {
+      if (button.dataset.pendingKind === 'promotion') {
+        S.screen = 'promotions'; S.promotionFilter = 'todos'; S.selectedPromotion = Number(button.dataset.pendingIndex);
+      } else {
+        S.screen = 'proposals'; S.selectedProposal = Number(button.dataset.pendingIndex);
+      }
+      render();
+    });
+    document.getElementById('nca-confirm-batch').onclick = async event => {
+      event.currentTarget.disabled = true;
+      await submitAllDrafts(true);
+      const button = document.getElementById('nca-confirm-batch');
+      if (button) button.disabled = false;
+    };
+  }
+
+  async function submitAllDrafts(confirmed = false) {
+    if (confirmed !== true) return showPendingSummary();
+    await S.saveQueue;
+    if (S.draftError) return toast('Há um rascunho que não foi salvo. Tente novamente antes de enviar.', true);
+    if (!cycleOpen()) return toast('O prazo de avaliação terminou.', true);
     const drafts = completeDrafts();
     if (!drafts.length) return toast('Preencha e salve pelo menos uma avaliação completa antes de enviar.', true);
     if (S.busy) return;
@@ -607,9 +751,12 @@
           : { Nick: S.nick, Ordem: item.ordem, Veredito: draft.veredito, Comentario: draft.comentario, status: 'enviado', Timestamp: serverTime(), finalizadoEm: serverTime(), atualizadoEm: serverTime(), rascunho: firebase.firestore.FieldValue.delete(), historico: historyOf(current, ['Veredito', 'Comentario']) };
         batch.set(ref, payload, { merge: true });
       });
+      const receipt = { id: crypto.randomUUID(), user: S.nick, cycle: S.cycle?.id || '', at: new Date().toISOString(), items: drafts.map(({ kind, item }) => { const vote = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); return { title: kind === 'promotion' ? item.nick : 'Proposta ' + item.ordem, verdict: vote.rascunho.veredito, comment: vote.rascunho.dissertacao ?? vote.rascunho.comentario }; }) };
       await batch.commit();
-      drafts.forEach(({ kind, item }) => { const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); if (current) { const savedDraft = current.rascunho || {}; current.status = 'enviado'; if (kind === 'promotion') { current.veredito = savedDraft.veredito; current.dissertacao = savedDraft.dissertacao; } else { current.Veredito = savedDraft.veredito; current.Comentario = savedDraft.comentario; } current.rascunho = null; } });
-      toast(`${drafts.length} avaliação(ões) enviada(s) de uma vez.`); render();
+      S.lastReceipt = receipt;
+      try { localStorage.setItem('NCA_RECEIPT:' + norm(S.nick), JSON.stringify(receipt)); } catch (_) {}
+      drafts.forEach(({ kind, item }) => { const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); if (current) { const savedDraft = current.rascunho || {}; current.historico = historyOf(current, kind === 'promotion' ? ['veredito', 'dissertacao'] : ['Veredito', 'Comentario']); current.atualizadoEm = new Date().toISOString(); current.status = 'enviado'; if (kind === 'promotion') { current.veredito = savedDraft.veredito; current.dissertacao = savedDraft.dissertacao; } else { current.Veredito = savedDraft.veredito; current.Comentario = savedDraft.comentario; } current.rascunho = null; } });
+      S.screen = 'home'; render(); showReceipt(receipt);
     } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar as avaliações.', true); }
     finally { S.busy = false; }
   }
@@ -646,7 +793,10 @@
       if (!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
       S.db = firebase.firestore();
       await load();
+      try { S.lastReceipt = JSON.parse(localStorage.getItem('NCA_RECEIPT:' + norm(S.nick)) || 'null'); } catch (_) {}
       render();
+      recoverLocalDrafts().then(() => { if (!document.getElementById('nca-evaluation-form')) render(); });
+      window.addEventListener('online', () => recoverLocalDrafts());
     } catch (error) {
       console.error(error);
       stateScreen('fa-lock', 'Acesso indisponível', error.message || 'Não foi possível abrir a Central.', true);

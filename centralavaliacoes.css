@@ -232,3 +232,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+.nca-compare-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.nca-compare-controls label { display: grid; gap: 8px; }
+.nca-pending-list { display: grid; gap: 10px; }
+.nca-pending-row { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.nca-pending-row > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.nca-pending-row p { margin: 5px 0 0; color: var(--muted); }
+@media (max-width: 480px) { .nca-pending-row { flex-wrap: wrap; } .nca-pending-row .nca-button { margin-left: auto; } }
+.nca-compare-controls select { width: 100%; padding: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+
+.nca-week-select { display: grid; gap: 8px; margin-bottom: 20px; }
+.nca-week-select select { padding: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
