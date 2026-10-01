@@ -135,8 +135,12 @@
     toast.timer = setTimeout(() => node.classList.remove('is-visible'), 5500);
   }
 
+  function footer() {
+    return `<footer class="nca-footer"><p><span aria-hidden="true">&lt;/&gt;</span> por <strong>Sr.Gabriel.</strong> Com base no desenvolvido por <strong>Aloscon.</strong></p><p>Todos os direitos reservados à Companhia dos Professores.</p></footer>`;
+  }
+
   function stateScreen(icon, title, message, retry = false) {
-    root.innerHTML = `<div class="nca-app"><div class="nca-topline"></div><main class="nca-state"><section class="nca-state-card"><i class="fa-solid ${icon}"></i><h1>${esc(title)}</h1><p>${esc(message)}</p>${retry ? '<button id="nca-retry" class="nca-button nca-button--primary"><i class="fa-solid fa-rotate-right"></i>Tentar novamente</button>' : ''}</section></main></div>`;
+    root.innerHTML = `<div class="nca-app"><div class="nca-topline"></div><main class="nca-state"><section class="nca-state-card"><i class="fa-solid ${icon}"></i><h1>${esc(title)}</h1><p>${esc(message)}</p>${retry ? '<button id="nca-retry" class="nca-button nca-button--primary"><i class="fa-solid fa-rotate-right"></i>Tentar novamente</button>' : ''}</section></main>${footer()}</div>`;
     document.getElementById('nca-retry')?.addEventListener('click', init);
   }
 
@@ -216,7 +220,7 @@
   }
 
   function shell(content, title = 'Central de <em>Avaliações.</em>', description = 'Analise propostas e candidatos sem sair do Forumeiros.') {
-    root.innerHTML = `<div class="nca-app"><div class="nca-topline"></div><div class="nca-shell">${header()}<section class="nca-hero"><div><p class="nca-kicker">Conselho da Companhia dos Professores</p><h1>${title}</h1><p class="nca-hero-copy">${esc(description)}</p></div>${progress()}</section>${content}</div><div id="nca-toast" class="nca-toast" aria-live="polite"></div><div id="nca-modal" class="nca-modal" hidden></div></div>`;
+    root.innerHTML = `<div class="nca-app"><div class="nca-topline"></div><div class="nca-shell">${header()}<section class="nca-hero"><div><p class="nca-kicker">Conselho da Companhia dos Professores</p><h1>${title}</h1><p class="nca-hero-copy">${esc(description)}</p></div>${progress()}</section>${content}</div>${footer()}<div id="nca-toast" class="nca-toast" aria-live="polite"></div><div id="nca-modal" class="nca-modal" hidden></div></div>`;
     document.getElementById('nca-home').onclick = () => { S.screen = 'home'; render(); };
     document.getElementById('nca-theme').onclick = toggleTheme;
   }

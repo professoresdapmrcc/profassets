@@ -173,6 +173,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-state-card h1 { margin: 16px 0 7px; font: 700 35px var(--title); }
 .nca-state-card p { margin: 0; color: var(--muted); }
 .nca-state-card .nca-button { margin-top: 18px; }
+.nca-footer { padding: 24px clamp(16px, 3vw, 44px) 30px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 78%, var(--page)); color: var(--muted); text-align: center; font-size: 11px; line-height: 1.7; }
+.nca-footer p { margin: 0; }
+.nca-footer p + p { margin-top: 2px; }
+.nca-footer span { margin-right: 4px; color: var(--gold); font-weight: 800; }
+.nca-footer strong { color: var(--text); }
 .nca-toast { position: fixed; left: 50%; bottom: 20px; z-index: 100; display: flex; align-items: center; gap: 10px; width: min(440px, calc(100vw - 28px)); padding: 13px 16px; border: 1px solid var(--line-strong); border-radius: 13px; background: var(--surface-2); box-shadow: var(--shadow); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s ease; }
 .nca-toast.is-visible { transform: translate(-50%, 0); opacity: 1; }
 .nca-toast.is-error { border-color: var(--danger); }
