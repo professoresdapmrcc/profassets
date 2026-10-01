@@ -370,7 +370,7 @@
 
   function promotionIndex(items, active) {
     const filters = [['todos', 'Todos'], ['professor', 'Professores'], ['coordenador', 'Coordenadores'], ['graduador', 'Graduadores']];
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}">${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : vote?.rascunho ? 'is-draft' : ''}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}">${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function promotionEditor(item, performance = {}) {
@@ -468,7 +468,7 @@
   }
 
   function proposalIndex(items, active) {
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : vote?.rascunho ? 'is-draft' : ''}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${sent(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function proposalEditor(item) {
