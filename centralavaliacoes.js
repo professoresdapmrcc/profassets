@@ -10,6 +10,12 @@
     appId: '1:268861178598:web:9686b81bb003f9514fb127',
   };
   const THEME_KEY = 'NEXUS_CENTRAL_AVALIACOES_THEME';
+  const CONSULTA_SHEETS = {
+    professor: { sheetId: '1EQ2_6q0lrA4XIQQhaeJNmp9esYItkN6GKlIou9TkEZo', metrics: ['CRO', 'CAC', 'CAP', 'ACL'] },
+    coordenador: { sheetId: '1n3mMltgY0AmDCeO1vRDaYuz-jLaZ--4hO5f9UnTdtEw', metrics: ['Carta de auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA'] },
+    graduador: { sheetId: '1-jR5kLgKHPJuRsXl3PBnz3sbi4mkDeRiQ9rWmmp8uAk', metrics: ['Grad. I', 'Grad. II'] },
+  };
+  const CONSULTA_MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const PROMOTION_RANKS = ['professor', 'coordenador', 'graduador'];
   const PROPOSAL_VERDICTS = [
     ['Aprovada', 'fa-check'],
@@ -147,6 +153,32 @@
     const careerLessons = firstValue(performance.aulasCargoAtual, performance.aulasAplicadasCargo, performance.aulasAplicadas, profile.aulasAplicadas, 0);
     const rows = weeks.map((week, index) => `<article class="nca-week-card"><header><strong>Semana ${weeks.length - index}</strong><span>${dateLabel(firstValue(week.data, week.dataFim, week.fim, week.timestamp))}</span></header><div><b>${percentLabel(firstValue(week.porcentagem, week.percentual, week.porcentagemTotal, week.meta))}</b><small>Meta cumprida</small></div><div><b>${numberLabel(firstValue(week.aulasAplicadas, week.aulas, week.quantidade, week.graduacoes))}</b><small>${item.cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas'}</small></div></article>`).join('');
     return `<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-summary"><div class="nca-info"><span>Aulas aplicadas na carreira atual</span><strong>${numberLabel(careerLessons)}</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>${weeks.length}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0)}</strong></div><div class="nca-info"><span>Licenças registradas</span><strong>${licenseHistory(item.nick).length}</strong></div><div class="nca-info"><span>Maior resultado</span><strong>${esc(item.cargo === 'graduador' ? numberLabel(firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidade)) : percentLabel(firstValue(performance.maiorPorcentagem, performance.maiorPercentual)))}</strong></div></div><h4>Metas por semana</h4><div class="nca-week-grid">${rows || '<div class="nca-locked">Nenhum histórico semanal de metas foi encontrado.</div>'}</div></section>`;
+  };
+  const parseCsv = csv => {
+    const rows = []; let row = []; let value = ''; let quoted = false;
+    for (let index = 0; index < csv.length; index += 1) {
+      const char = csv[index]; const next = csv[index + 1];
+      if (char === '"' && quoted && next === '"') { value += '"'; index += 1; }
+      else if (char === '"') quoted = !quoted;
+      else if (char === ',' && !quoted) { row.push(value.trim()); value = ''; }
+      else if ((char === '\n' || char === '\r') && !quoted) { if (char === '\r' && next === '\n') index += 1; row.push(value.trim()); if (row.some(Boolean)) rows.push(row); row = []; value = ''; }
+      else value += char;
+    }
+    if (value || row.length) { row.push(value.trim()); if (row.some(Boolean)) rows.push(row); }
+    return rows;
+  };
+  const consultaWeeks = (csv, config, nick) => {
+    const rows = parseCsv(csv); const header = rows[0] || [];
+    const starts = header.map((cell, index) => ({ cell, index })).filter(({ cell, index }) => /nick/i.test(cell) && plain(header[index + 1] || '') === plain(config.metrics[0]));
+    return starts.flatMap(({ cell, index }) => {
+      const label = clean(cell.replace(/nick/gi, '').replace(/\s+/g, ' '), 'Semana');
+      const totalIndex = index + 1 + config.metrics.length;
+      const row = rows.slice(1).find(values => norm(values[index]) === norm(nick));
+      if (!row) return [];
+      const metrics = config.metrics.map((metric, metricIndex) => Number(String(row[index + 1 + metricIndex] || '').replace('%', '').replace(',', '.')) || 0);
+      const total = String(row[totalIndex] || '0').trim();
+      return [{ data: label, porcentagem: total, percentual: total, aulasAplicadas: metrics.reduce((sum, value) => sum + value, 0), metrics, status: row[totalIndex + 1] || '' }];
+    });
   };
   const allowedRole = value => {
     const cargo = plain(value).replace(/\(a\)/g, '');
@@ -305,8 +337,16 @@
     try {
       const snapshot = await S.db.collection('desempenho_membros').doc(id).get();
       const data = snapshot.exists ? snapshot.data() : {};
-      S.performance.set(id, data);
-      return data;
+      const consultaConfig = CONSULTA_SHEETS[item.cargo];
+      let weekly = [];
+      if (consultaConfig) {
+        const month = CONSULTA_MONTHS[new Date().getMonth()];
+        const url = `https://docs.google.com/spreadsheets/d/${consultaConfig.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(month)}`;
+        try { weekly = consultaWeeks(await (await fetch(url, { cache: 'no-store' })).text(), consultaConfig, item.nick); } catch (error) { console.warn('Consulta semanal indisponível:', error); }
+      }
+      const merged = weekly.length ? { ...data, semanas: weekly, historicoMetas: weekly } : data;
+      S.performance.set(id, merged);
+      return merged;
     } catch (error) {
       console.warn('Desempenho indisponível:', error);
       S.performance.set(id, {});
