@@ -294,11 +294,21 @@
     const percentage = total ? Math.round((done / total) * 100) : 0;
     return `<aside class="nca-progress-card"><div class="nca-progress-head"><span>Seu progresso</span><strong>${done} de ${total}</strong></div><div class="nca-progress-track"><span style="width:${percentage}%"></span></div><small>${percentage}% das avaliações disponíveis foram enviadas.</small></aside>`;
   }
+  const completeDrafts = () => [
+    ...S.promotions.filter(item => { const vote = ownPromotionVote(item); return vote?.status === 'rascunho' && vote.rascunho?.veredito && vote.rascunho?.dissertacao; }).map(item => ({ kind: 'promotion', item })),
+    ...S.proposals.filter(item => { const vote = ownProposalVote(item); return vote?.status === 'rascunho' && vote.rascunho?.veredito && vote.rascunho?.comentario; }).map(item => ({ kind: 'proposal', item })),
+  ];
 
   function shell(content, title = 'Central de <em>Avaliações.</em>', description = 'Analise propostas e candidatos sem sair do Forumeiros.') {
     root.innerHTML = `<div class="nca-app"><div class="nca-topline"></div><div class="nca-shell">${header()}<section class="nca-hero"><div><p class="nca-kicker">Conselho da Companhia dos Professores</p><h1>${title}</h1><p class="nca-hero-copy">${esc(description)}</p></div>${progress()}</section>${content}</div>${footer()}<div id="nca-toast" class="nca-toast" aria-live="polite"></div><div id="nca-modal" class="nca-modal" hidden></div></div>`;
     document.getElementById('nca-home').onclick = () => { S.screen = 'home'; render(); };
     document.getElementById('nca-theme').onclick = toggleTheme;
+    const batchButton = document.createElement('button');
+    batchButton.id = 'nca-submit-all'; batchButton.className = 'nca-button nca-button--gold nca-batch-button';
+    batchButton.innerHTML = `<i class="fa-solid fa-paper-plane"></i>Enviar preenchidos (${completeDrafts().length})`;
+    batchButton.disabled = completeDrafts().length === 0;
+    batchButton.onclick = submitAllDrafts;
+    document.querySelector('.nca-actions')?.prepend(batchButton);
   }
 
   function renderHome() {
@@ -574,6 +584,33 @@
       upsert(S.proposalVotes, id, { ...payload, finalizadoEm: current.finalizadoEm || new Date().toISOString(), Timestamp: new Date().toISOString(), atualizadoEm: new Date().toISOString(), rascunho: null });
       toast('Parecer enviado. Os resultados foram liberados.'); render();
     } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar o parecer.', true); }
+    finally { S.busy = false; }
+  }
+
+  async function submitAllDrafts() {
+    const drafts = completeDrafts();
+    if (!drafts.length) return toast('Preencha e salve pelo menos uma avaliação completa antes de enviar.', true);
+    if (S.busy) return;
+    S.busy = true;
+    try {
+      await confirmForumUser();
+      const batch = S.db.batch();
+      drafts.forEach(({ kind, item }) => {
+        const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item);
+        const draft = current.rascunho;
+        const id = kind === 'promotion' ? `${item.cargo}_${item.nick}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}` : `voto_${item.ordem}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`;
+        const ref = kind === 'promotion'
+          ? S.db.collection('avaliacoes_nexus').doc(id)
+          : S.db.collection('nexus_config').doc('Propostas').collection('votos_conselho').doc(id);
+        const payload = kind === 'promotion'
+          ? { avaliador: S.nick, avaliadorCargo: S.profile.cargo, nick_avaliado: item.nick, cargo: item.cargo, ciclo_id: S.cycle?.id || '', veredito: draft.veredito, dissertacao: draft.dissertacao, status: 'enviado', timestamp: serverTime(), finalizadoEm: serverTime(), atualizadoEm: serverTime(), rascunho: firebase.firestore.FieldValue.delete(), historico: historyOf(current, ['veredito', 'dissertacao']) }
+          : { Nick: S.nick, Ordem: item.ordem, Veredito: draft.veredito, Comentario: draft.comentario, status: 'enviado', Timestamp: serverTime(), finalizadoEm: serverTime(), atualizadoEm: serverTime(), rascunho: firebase.firestore.FieldValue.delete(), historico: historyOf(current, ['Veredito', 'Comentario']) };
+        batch.set(ref, payload, { merge: true });
+      });
+      await batch.commit();
+      drafts.forEach(({ kind, item }) => { const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); if (current) { const savedDraft = current.rascunho || {}; current.status = 'enviado'; if (kind === 'promotion') { current.veredito = savedDraft.veredito; current.dissertacao = savedDraft.dissertacao; } else { current.Veredito = savedDraft.veredito; current.Comentario = savedDraft.comentario; } current.rascunho = null; } });
+      toast(`${drafts.length} avaliação(ões) enviada(s) de uma vez.`); render();
+    } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar as avaliações.', true); }
     finally { S.busy = false; }
   }
 

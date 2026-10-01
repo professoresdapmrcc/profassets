@@ -71,6 +71,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-icon-button { display: grid; place-items: center; width: 43px; height: 43px; padding: 0; }
 .nca-icon-button:hover, .nca-button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--line-strong); background: var(--surface-3); }
 .nca-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 43px; padding: 10px 16px; font-weight: 700; }
+.nca-batch-button { min-height: 34px; padding: 7px 10px; font-size: 10px; }
 .nca-button--primary { border-color: var(--purple); background: var(--purple-strong); color: #fff; }
 .nca-button--gold { border-color: var(--gold); background: var(--gold); color: #1e1303; }
 .nca-button--ghost { background: transparent; }
