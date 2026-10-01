@@ -482,41 +482,10 @@
     renderHome();
   }
 
-  function loadLocalPreview() {
-    S.nick = 'Sr.Gabriel.';
-    S.profile = { name: S.nick, cargo: 'Vice-Líder', status: 'Ativo', dataPromocao: '2026-07-14' };
-    S.users = [
-      S.profile,
-      { name: 'Bach', cargo: 'Professor(a)', status: 'Ativo', dataEntrada: '2025-11-02', dataPromocao: '2026-08-20', propostas: 4 },
-      { name: 'mirinha345', cargo: 'Coordenador(a)', status: 'Ativo', dataPromocao: '2026-06-18' },
-      { name: 'Kha.xin', cargo: 'Graduador(a)', status: 'Ativo', dataEntrada: '2025-08-11', dataPromocao: '2026-05-03', propostas: 2 },
-    ];
-    S.promotions = [
-      { nick: 'Bach', cargo: 'professor', vagas: 2 },
-      { nick: 'mirinha345', cargo: 'coordenador', vagas: 1 },
-      { nick: 'Kha.xin', cargo: 'graduador', vagas: 1 },
-    ];
-    S.proposals = [{ ordem: 1521, titulo: 'Atualização do programa de aulas', autor: 'Bach', tipo: 'Melhoria', conteudo: 'Proposta demonstrativa para validar a leitura, o parecer e a responsividade da Central.', data: new Date().toISOString() }];
-    S.promotionVotes = [
-      { id: 'preview-1', avaliador: 'Conselheiro.Exemplo', nick_avaliado: 'Bach', cargo: 'professor', veredito: 'Promovido', dissertacao: 'Apresentou constância, boa participação e evolução durante o ciclo.', status: 'enviado' },
-      { id: 'preview-2', avaliador: 'Estagiario.Exemplo', nick_avaliado: 'Bach', cargo: 'professor', veredito: 'Mantém', dissertacao: 'Ainda precisa consolidar os resultados das metas recentes.', status: 'enviado' },
-    ];
-    S.proposalVotes = [];
-    S.licenses = [];
-    S.cycle = { id: 'preview', status: 'open', start: new Date(Date.now() - 86400000).toISOString(), end: new Date(Date.now() + 604800000).toISOString() };
-    S.performance.set(key('Bach'), { porcentagemTotal: 92, maiorPorcentagem: 118, aulasAplicadas: 18, melhorSemanaLabel: '21 a 27 set.' });
-    S.performance.set(key('Kha.xin'), { aulasAplicadas: 23, melhorSemanaAulas: 7, melhorSemanaLabel: '14 a 20 set.' });
-  }
-
   async function init() {
     stateScreen('fa-circle-notch fa-spin', 'Carregando a Central', 'Confirmando sua conta do fórum e sincronizando o Firebase.');
     try {
       try { document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }
-      if (/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
-        loadLocalPreview();
-        render();
-        return;
-      }
       S.nick = await forumUser();
       if (!window.firebase) throw new Error('A biblioteca do Firebase não foi carregada.');
       if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
