@@ -52,6 +52,10 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const key = value => plain(value).replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'registro';
   const nickOf = user => clean(user?.name || user?.nick || user?.nickname);
+  const encodeNickname = nickname => {
+    const lower = clean(nickname).toLocaleLowerCase('pt-BR');
+    try { return btoa(unescape(encodeURIComponent(lower))); } catch (_) { return btoa(lower); }
+  };
   const dataOf = doc => ({ id: doc.id, ...doc.data() });
   const sent = record => Boolean(record && (record.status === 'enviado' || (!record.status && (record.veredito || record.Veredito))));
   const avatar = (nick, headOnly = true) => `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${encodeURIComponent(nick)}&direction=2&head_direction=2&gesture=sml&size=m&headonly=${headOnly ? 1 : 0}&img_format=png`;
@@ -166,9 +170,15 @@
   async function load() {
     const usersSnap = await S.db.collection('users').get();
     S.users = usersSnap.docs.map(dataOf);
+    const nicknameIds = Array.from(new Set([encodeNickname(S.nick), norm(S.nick), clean(S.nick)]));
+    const nicknameSnapshots = await Promise.all(nicknameIds.map(id => safeGet(S.db.collection('nicknames').doc(id).get(), null)));
+    const mappedUid = nicknameSnapshots.map(snapshot => snapshot?.exists ? snapshot.data()?.uid : '').find(Boolean);
+    const mappedProfile = mappedUid ? S.users.find(user => user.id === mappedUid) : null;
     const matches = S.users.filter(user => norm(nickOf(user)) === norm(S.nick));
-    if (matches.length !== 1) throw new Error('Seu nickname não foi localizado de forma única no Nexus.');
-    S.profile = matches[0];
+    const activeMatches = matches.filter(user => plain(user.status || 'ativo') === 'ativo');
+    const eligibleMatches = activeMatches.filter(user => allowedRole(user.cargo));
+    S.profile = mappedProfile || eligibleMatches[0] || activeMatches[0] || matches[0];
+    if (!S.profile) throw new Error(`O nickname ${S.nick} não foi localizado no cadastro do Nexus.`);
     if (plain(S.profile.status) !== 'ativo') throw new Error('Seu cadastro no Nexus não está ativo.');
     if (!allowedRole(S.profile.cargo)) throw new Error(`O cargo ${clean(S.profile.cargo, 'não informado')} não possui acesso a esta Central.`);
 
