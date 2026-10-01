@@ -130,6 +130,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-member-tab { padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .nca-member-tab.is-active { background: var(--purple); color: #fff; }
 .nca-performance-panel[hidden], .nca-info-grid[hidden] { display: none; }
+.nca-ficha-grid .nca-info:nth-child(n + 5) { display: none; }
 .nca-performance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
 .nca-performance-panel h4 { margin: 0 0 10px; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .nca-week-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
