@@ -283,7 +283,7 @@
   }
 
   function header() {
-    return `<header class="nca-header"><div class="nca-brand"><span class="nca-brand-mark">N</span><div><strong>NEXUS</strong><small>Central de avaliações</small></div></div><div class="nca-actions"><button id="nca-home" class="nca-icon-button" title="Voltar ao início"><i class="fa-solid fa-house"></i></button><button id="nca-theme" class="nca-icon-button" title="Alternar tema"><i class="fa-solid ${document.documentElement.dataset.theme === 'light' ? 'fa-moon' : 'fa-sun'}"></i></button><div class="nca-user"><img src="${avatar(S.nick)}" alt=""><div><strong>${esc(S.nick)}</strong><small>${esc(S.profile?.cargo)}</small></div></div></div></header>`;
+    return `<header class="nca-header"><div class="nca-brand"><img class="nca-brand-logo" src="https://i.imgur.com/yTV30Lk.png" alt="NEXUS"><div><strong>NEXUS</strong><small>Central de avaliações</small></div></div><div class="nca-actions"><button id="nca-home" class="nca-icon-button" title="Voltar ao início"><i class="fa-solid fa-house"></i></button><button id="nca-theme" class="nca-icon-button" title="Alternar tema"><i class="fa-solid ${document.documentElement.dataset.theme === 'light' ? 'fa-moon' : 'fa-sun'}"></i></button><div class="nca-user"><img src="${avatar(S.nick)}" alt=""><div><strong>${esc(S.nick)}</strong><small>${esc(S.profile?.cargo)}</small></div></div></div></header>`;
   }
 
   function progress() {

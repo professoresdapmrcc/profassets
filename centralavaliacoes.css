@@ -60,6 +60,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
 .nca-brand, .nca-user, .nca-actions, .nca-inline { display: flex; align-items: center; }
 .nca-brand { gap: 13px; }
+.nca-brand-logo { display: block; width: 45px; height: 45px; border-radius: 14px; object-fit: cover; }
 .nca-brand-mark { display: grid; place-items: center; width: 45px; height: 45px; border-radius: 14px; background: linear-gradient(145deg, var(--purple), var(--purple-strong)); color: white; box-shadow: 0 10px 28px rgba(151, 40, 161, .26); font: 700 25px var(--title); }
 .nca-brand strong { display: block; font-size: 16px; letter-spacing: .2em; }
 .nca-brand small, .nca-user small { display: block; color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
