@@ -138,6 +138,16 @@
     const date = firstValue(performance.metaData, performance.dataMeta, performance.data_meta, performance.semanaMeta, performance.dataSemana, profile.metaData);
     return value === undefined ? 'Não disponível' : `${percentLabel(value)}${date ? ` - ${dateLabel(date)}` : ''}`;
   };
+  const performanceWeeks = (performance, profile) => {
+    const values = firstValue(performance.historicoMetas, performance.historico_metas, performance.metas, performance.semanas, profile.historicoMetas, []);
+    return Array.isArray(values) ? values.slice().sort((a, b) => String(firstValue(b.data, b.dataFim, b.fim, b.timestamp) || '').localeCompare(String(firstValue(a.data, a.dataFim, a.fim, a.timestamp) || ''))) : [];
+  };
+  const performancePanel = (performance, profile, item) => {
+    const weeks = performanceWeeks(performance, profile);
+    const careerLessons = firstValue(performance.aulasCargoAtual, performance.aulasAplicadasCargo, performance.aulasAplicadas, profile.aulasAplicadas, 0);
+    const rows = weeks.map((week, index) => `<article class="nca-week-card"><header><strong>Semana ${weeks.length - index}</strong><span>${dateLabel(firstValue(week.data, week.dataFim, week.fim, week.timestamp))}</span></header><div><b>${percentLabel(firstValue(week.porcentagem, week.percentual, week.porcentagemTotal, week.meta))}</b><small>Meta cumprida</small></div><div><b>${numberLabel(firstValue(week.aulasAplicadas, week.aulas, week.quantidade, week.graduacoes))}</b><small>${item.cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas'}</small></div></article>`).join('');
+    return `<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-summary"><div class="nca-info"><span>Aulas aplicadas na carreira atual</span><strong>${numberLabel(careerLessons)}</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>${weeks.length}</strong></div><div class="nca-info"><span>Maior resultado</span><strong>${esc(item.cargo === 'graduador' ? numberLabel(firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidade)) : percentLabel(firstValue(performance.maiorPorcentagem, performance.maiorPercentual)))}</strong></div></div><h4>Metas por semana</h4><div class="nca-week-grid">${rows || '<div class="nca-locked">Nenhum histórico semanal de metas foi encontrado.</div>'}</div></section>`;
+  };
   const allowedRole = value => {
     const cargo = plain(value).replace(/\(a\)/g, '');
     return cargo.includes('estagiari') || cargo.includes('conselheir') || cargo.includes('vice-lider') || cargo === 'lider' || cargo.includes('lider da companhia');
@@ -340,11 +350,29 @@
     return `<section class="nca-editor"><div class="nca-editor-scroll"><header class="nca-editor-head"><div class="nca-member-heading"><img src="${avatar(item.nick, false)}" alt=""><div><p class="nca-kicker">Candidato a promoção</p><h2>${esc(item.nick)}</h2><p>${cargoLabel(item.cargo)} · ${item.vagas} vaga${item.vagas === 1 ? '' : 's'} no próximo cargo</p></div></div><span class="nca-status-pill ${sent(vote) ? 'is-sent' : ''}">${sent(vote) ? 'Parecer enviado' : draft.veredito || draft.dissertacao ? 'Rascunho' : 'Pendente'}</span></header><section class="nca-section"><div class="nca-section-title"><h3>Ficha do membro</h3><button id="nca-compare-toggle" class="nca-button nca-button--ghost"><i class="fa-solid fa-scale-balanced"></i>${selected ? 'Remover da comparação' : 'Adicionar ao comparador'}</button></div><div class="nca-info-grid"><div class="nca-info"><span>Cargo atual</span><strong>${esc(profile.cargo || cargoLabel(item.cargo))}</strong></div><div class="nca-info"><span>Data de entrada</span><strong>${dateLabel(entryDate)}</strong></div><div class="nca-info"><span>Última promoção/rebaixamento</span><strong>${lastCareerDate ? dateLabel(lastCareerDate) : '-'}</strong></div><div class="nca-info"><span>Tempo no cargo</span><strong>${timeBase ? daysSince(timeBase) : '-'}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(approvedProposals)}</strong></div><div class="nca-info"><span>Licenças</span><strong>${esc(licenseSummary(item.nick))}</strong></div><div class="nca-info"><span>Meta recente</span><strong>${esc(goalLabel)}</strong></div><div class="nca-info"><span>Aulas aplicadas</span><strong>${esc(lessons)}</strong></div><div class="nca-info"><span>${bestResultTitle}</span><strong>${esc(bestResultLabel)}</strong></div><div class="nca-info"><span>${bestWeekTitle}</span><strong>${esc(bestWeekLabel(performance))}</strong></div><div class="nca-info"><span>Vagas</span><strong>${item.vagas}</strong></div></div></section><section class="nca-section"><div class="nca-section-title"><h3>Votos do Conselho</h3><button id="nca-open-comments" class="nca-button nca-button--ghost"><i class="fa-solid fa-comments"></i>Ver ${votes.length} parecer${votes.length === 1 ? '' : 'es'}</button></div><div class="nca-votes"><div class="nca-vote-total"><strong>${promote}</strong><span>Votaram para promover</span></div><div class="nca-vote-total"><strong>${keep}</strong><span>Votaram para manter</span></div></div></section><form id="nca-evaluation-form"><section class="nca-section"><div class="nca-section-title"><h3>Seu veredito</h3></div><div class="nca-verdicts">${[['Promovido', 'Promover', 'fa-arrow-up'], ['Mantém', 'Manter', 'fa-minus']].map(([value, label, icon]) => `<label class="nca-choice"><input type="radio" name="veredito" value="${value}" ${verdict === value ? 'checked' : ''}><span><i class="fa-solid ${icon}"></i>${label}</span></label>`).join('')}</div></section><section class="nca-section"><label class="nca-field-label" for="nca-comment">Justificativa obrigatória <small><span id="nca-count">${comment.length}</span>/5000</small></label><textarea id="nca-comment" class="nca-textarea" maxlength="5000" placeholder="Explique os fatos que fundamentam seu parecer.">${esc(comment)}</textarea></section><footer class="nca-editor-actions"><span id="nca-save-label" class="nca-save-state"><i class="fa-solid fa-cloud"></i>${draft.veredito || draft.dissertacao ? 'Rascunho recuperado. Envie para contabilizar.' : 'O preenchimento será salvo automaticamente.'}</span><button class="nca-button nca-button--gold" type="submit" ${cycleOpen() ? '' : 'disabled'}><i class="fa-solid fa-paper-plane"></i>${sent(vote) ? 'Atualizar avaliação' : 'Enviar avaliação'}</button></footer></form></div></section>`;
   }
 
-  function bindPromotion(items, item) {
+  function bindPromotion(items, item, performance) {
     root.querySelectorAll('[data-index]').forEach(button => button.onclick = () => { S.selectedPromotion = Number(button.dataset.index); render(); });
     root.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => { S.promotionFilter = button.dataset.filter; S.selectedPromotion = 0; render(); });
     document.getElementById('nca-compare-toggle').onclick = () => toggleCompare(item);
     document.getElementById('nca-open-comments').onclick = () => showPromotionComments(item);
+    const infoSection = root.querySelector('.nca-editor .nca-section');
+    const sectionTitle = infoSection?.querySelector('.nca-section-title');
+    const infoGrid = infoSection?.querySelector('.nca-info-grid');
+    if (sectionTitle && infoGrid) {
+      const heading = sectionTitle.querySelector('h3');
+      const tabs = document.createElement('div');
+      tabs.className = 'nca-member-tabs';
+      tabs.innerHTML = '<button type="button" class="nca-member-tab is-active" data-member-tab="ficha">Ficha do membro</button><button type="button" class="nca-member-tab" data-member-tab="desempenho">Desempenho</button>';
+      heading?.replaceWith(tabs);
+      infoSection.insertAdjacentHTML('beforeend', performancePanel(performance, memberProfile(item), item));
+      const performanceNode = document.getElementById('nca-member-performance');
+      tabs.querySelectorAll('[data-member-tab]').forEach(button => button.onclick = () => {
+        const showPerformance = button.dataset.memberTab === 'desempenho';
+        infoGrid.hidden = showPerformance;
+        performanceNode.hidden = !showPerformance;
+        tabs.querySelectorAll('.nca-member-tab').forEach(tab => tab.classList.toggle('is-active', tab === button));
+      });
+    }
     const form = document.getElementById('nca-evaluation-form');
     form.addEventListener('input', () => {
       document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length;
@@ -360,7 +388,7 @@
     const item = items[S.selectedPromotion];
     const performance = await loadPerformance(item);
     shell(`<div class="nca-compare-bar"><div class="nca-compare-list">${S.compare.map(candidate => `<span class="nca-compare-chip">${esc(candidate.nick)}<button data-remove-compare="${esc(candidate.nick)}" data-cargo="${candidate.cargo}"><i class="fa-solid fa-xmark"></i></button></span>`).join('') || '<span class="nca-save-state">Selecione até três membros para comparar.</span>'}</div><button id="nca-show-compare" class="nca-button nca-button--primary" ${S.compare.length < 2 ? 'disabled' : ''}><i class="fa-solid fa-scale-balanced"></i>Comparar ${S.compare.length || ''}</button></div><div class="nca-workspace">${promotionIndex(items, S.selectedPromotion)}${promotionEditor(item, performance)}</div>`, 'Avaliação de <em>promoções.</em>', 'Pareceres visíveis ao Conselho e comparação livre de até três membros.');
-    bindPromotion(items, item);
+    bindPromotion(items, item, performance);
     document.getElementById('nca-show-compare').onclick = () => { S.screen = 'compare'; render(); };
     root.querySelectorAll('[data-remove-compare]').forEach(button => button.onclick = () => { S.compare = S.compare.filter(candidate => !(norm(candidate.nick) === norm(button.dataset.removeCompare) && candidate.cargo === button.dataset.cargo)); render(); });
   }

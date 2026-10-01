@@ -126,6 +126,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-section { margin-top: 24px; }
 .nca-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
 .nca-section-title h3 { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.nca-member-tabs { display: inline-flex; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+.nca-member-tab { padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.nca-member-tab.is-active { background: var(--purple); color: #fff; }
+.nca-performance-panel[hidden], .nca-info-grid[hidden] { display: none; }
+.nca-performance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.nca-performance-panel h4 { margin: 0 0 10px; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.nca-week-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.nca-week-card { padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); }
+.nca-week-card header { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.nca-week-card header span, .nca-week-card small { color: var(--muted); font-size: 10px; }
+.nca-week-card > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-top: 9px; }
+.nca-week-card b { color: var(--gold-soft); font-size: 18px; }
 .nca-section-title a, .nca-section-title button { color: var(--purple-soft); font-size: 11px; }
 .nca-info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .nca-info { min-height: 86px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
@@ -205,6 +217,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .nca-editor-head { display: block; }
   .nca-status-pill { display: inline-block; margin-top: 13px; }
   .nca-info-grid, .nca-votes { grid-template-columns: 1fr 1fr; }
+  .nca-performance-summary, .nca-week-grid { grid-template-columns: 1fr; }
   .nca-editor-actions { align-items: stretch; flex-direction: column; }
   .nca-editor-actions .nca-button { width: 100%; }
 }
