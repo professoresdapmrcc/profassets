@@ -675,13 +675,18 @@
     return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
+  function canReadProposalVotes(profile, vote) {
+    const role = plain(profile?.cargo).replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
+    return /^(?:vice[ -]+)?lider(?: da companhia)?$/.test(role) || sent(vote);
+  }
+
   function proposalEditor(item) {
     const vote = ownProposalVote(item) || {};
     const draft = vote.rascunho || {};
     const verdict = clean(draft.veredito ?? vote.Veredito ?? vote.veredito);
     const comment = clean(draft.comentario ?? vote.Comentario ?? vote.comentario);
     const otherVotes = proposalVotesFor(item);
-    const canSee = sent(vote);
+    const canSee = canReadProposalVotes(S.profile, vote);
     return `<section class="nca-editor"><div class="nca-editor-scroll"><header class="nca-editor-head"><div><p class="nca-kicker">Proposta nº ${item.ordem}</p><h2>${esc(item.titulo)}</h2><p>${esc(item.autor)} · ${esc(item.tipo)} · ${dateLabel(item.data)}</p></div><span class="nca-status-pill ${sent(vote) ? 'is-sent' : ''}">${sent(vote) ? 'Parecer enviado' : draft.veredito || draft.comentario ? 'Rascunho' : 'Pendente'}</span></header><section class="nca-section"><div class="nca-section-title"><h3>Conteúdo da proposta</h3></div><div class="nca-proposal-body">${esc(item.conteudo)}</div></section><form id="nca-evaluation-form"><section class="nca-section"><div class="nca-section-title"><h3>Seu veredito</h3></div><div class="nca-verdicts">${PROPOSAL_VERDICTS.map(([value, icon]) => `<label class="nca-choice"><input type="radio" name="veredito" value="${value}" ${verdict === value ? 'checked' : ''}><span><i class="fa-solid ${icon}"></i>${value}</span></label>`).join('')}</div></section><section class="nca-section"><label class="nca-field-label" for="nca-comment">Justificativa obrigatória <small><span id="nca-count">${comment.length}</span>/5000</small></label><textarea id="nca-comment" class="nca-textarea" maxlength="5000" placeholder="Explique os fundamentos do seu parecer e os ajustes necessários.">${esc(comment)}</textarea></section><section class="nca-section"><div class="nca-section-title"><h3>Pareceres do Conselho</h3></div>${canSee ? `<div class="nca-comments">${otherVotes.map(v => `<article class="nca-comment"><header><strong>${esc(v.Nick ?? v.nick ?? 'Conselho')}</strong><span>${esc(v.Veredito ?? v.veredito)}</span></header><p>${esc(v.Comentario ?? v.comentario ?? 'Sem comentário.')}</p></article>`).join('') || '<div class="nca-locked">Nenhum outro parecer foi enviado.</div>'}</div>` : '<div class="nca-locked"><i class="fa-solid fa-lock"></i><br>Envie seu próprio parecer para consultar os votos dos demais.</div>'}</section><footer class="nca-editor-actions"><span id="nca-save-label" class="nca-save-state"><i class="fa-solid fa-cloud"></i>${draft.veredito || draft.comentario ? 'Rascunho recuperado. Envie para contabilizar.' : 'O preenchimento será salvo automaticamente.'}</span><button class="nca-button nca-button--gold" type="submit"><i class="fa-solid fa-paper-plane"></i>${sent(vote) ? 'Atualizar avaliação' : 'Enviar avaliação'}</button></footer></form></div></section>`;
   }
 
@@ -930,7 +935,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports = { canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();
