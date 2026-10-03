@@ -58,6 +58,26 @@ test('does not count coordinator orientations as lessons', () => {
   assert.equal(app.consultaWeeks(input, config, 'Membro')[0].aulasAplicadas, 5);
 });
 
+test('excludes licenses before readmission and licenses without a start date', () => {
+  app.S.users = [{ name: '.Fernandess', dataEntrada: '07/09/2026' }];
+  app.S.licenses = [
+    { nick: '.Fernandess', data_inicio: '13/04/2026', data_fim: '28/04/2026' },
+    { nick: '.Fernandess', data_inicio: '07/09/2026' },
+    { nick: '.Fernandess', data_inicio: '25/09/2026' },
+    { nick: '.Fernandess' },
+    { nick: 'Outro', data_inicio: '25/09/2026' },
+  ];
+  assert.deepEqual(app.licenseHistory('.Fernandess').map(item => item.data_inicio), ['25/09/2026', '07/09/2026']);
+  assert(!app.licenseSummary('.Fernandess').includes('13/04'));
+  assert.equal(app.licenseHistory('SemEntrada').length, 0);
+});
+
+test('rejects the default January tab when Google silently falls back for October', () => {
+  const january = csv('28 Dez 2025 a 03 de Jan 2026', 'Membro', [1, 0, 0, 0]);
+  assert.throws(() => app.validateSheetMonth(january, 'Outubro'), /outro período/);
+  assert.doesNotThrow(() => app.validateSheetMonth(january, 'Janeiro'));
+});
+
 test('missing entry requests manual review without fetching or old totals', async () => {
   app.S.users = [{ name: 'SemData', cargo: 'Professor(a)', aulasAplicadas: 999 }];
   const result = await app.loadPerformance({ nick: 'SemData', cargo: 'professor' });

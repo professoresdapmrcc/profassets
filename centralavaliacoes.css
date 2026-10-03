@@ -244,3 +244,42 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .nca-week-select { display: grid; gap: 8px; margin-bottom: 20px; }
 .nca-week-select select { padding: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+
+.nca-performance-panel { min-width: 0; font-size: 14px; line-height: 1.6; }
+.nca-performance-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; }
+.nca-performance-panel h4 { color: var(--text); font-size: 13px; letter-spacing: .04em; margin: 0 0 8px; }
+.nca-performance-intro p { color: var(--muted); margin: 0; }
+.nca-performance-panel a.nca-button { text-decoration: none; font-size: 12px; color: var(--text); }
+.nca-performance-summary .nca-info { padding: 18px; display: grid; align-content: start; gap: 8px; }
+.nca-performance-summary .nca-info > span { font-size: 11px; line-height: 1.5; }
+.nca-performance-summary .nca-info > strong { font-size: 25px; line-height: 1.2; }
+.nca-performance-summary .nca-info > small { font-size: 12px; color: var(--muted); }
+.nca-performance-block { margin-top: 26px; }
+.nca-performance-block > p { margin: 10px 0; }
+.nca-performance-block .nca-section-title { margin-bottom: 12px; }
+.nca-recent-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.nca-recent-goal { padding: 16px 18px; border-left: 3px solid var(--gold); background: var(--surface-2); border-radius: 0 10px 10px 0; }
+.nca-recent-goal span { display: block; font-size: 13px; color: var(--muted); }
+.nca-recent-goal strong { display: block; font-size: 28px; color: var(--text); font-variant-numeric: tabular-nums; }
+.nca-performance-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.nca-performance-table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
+.nca-performance-table caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.nca-performance-table th, .nca-performance-table td { padding: 14px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.nca-performance-table thead { background: var(--surface-3); }
+.nca-performance-table thead th { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.nca-performance-table tbody th { min-width: 150px; font-weight: 600; }
+.nca-performance-table td { font-variant-numeric: tabular-nums; }
+.nca-performance-table tbody tr:last-child > * { border-bottom: 0; }
+.nca-performance-table tbody tr:hover { background: var(--surface-2); }
+.nca-performance-table small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 3px; }
+.nca-performance-table .nca-meta-value { font-size: 19px; font-weight: 700; color: var(--text); }
+.nca-performance-status { display: inline-block; font-size: 11px; color: var(--text); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+.nca-performance-warning { padding: 12px 14px; border-left: 3px solid var(--gold); background: var(--surface-2); color: var(--text); font-size: 13px; }
+.nca-performance-source { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 14px; color: var(--muted); font-size: 12px; }
+.nca-performance-source summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 680px) {
+  .nca-performance-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nca-performance-summary .nca-info { padding: 14px; }
+  .nca-performance-table th, .nca-performance-table td { padding: 12px 10px; }
+}
+@media (max-width: 420px) { .nca-performance-summary, .nca-recent-goals { grid-template-columns: 1fr; } }
