@@ -131,28 +131,98 @@
     }
     return action === 'promov' ? firstValue(profile.dataPromocao, profile.ultimaPromocao, profile.data_ultima_promocao) : firstValue(profile.dataRebaixamento, profile.ultimoRebaixamento, profile.data_ultimo_rebaixamento);
   };
+  const WEEK_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+  function weekDates(week) {
+    const text = String(firstValue(week.data, week.dataFim, week.fim, week.timestamp) || '');
+    const matches = [...text.toUpperCase().matchAll(/(\d{1,2})\s+(?:DE\s+)?(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\.?\s+(?:DE\s+)?(\d{4})/g)];
+    const parsed = matches.map(match => new Date(Date.UTC(Number(match[3]), WEEK_MONTHS.indexOf(match[2]), Number(match[1]), 12)));
+    return { start: docTime(week.dataInicio || week.inicio) || parsed[0], end: docTime(week.dataFim || week.fim) || parsed[1] || parsed[0] || docTime(text) };
+  }
+  function weekPeriod(week) {
+    const { start, end } = weekDates(week);
+    const label = date => date.getUTCDate() + ' ' + WEEK_MONTHS[date.getUTCMonth()].slice(0, 1) + WEEK_MONTHS[date.getUTCMonth()].slice(1).toLowerCase();
+    if (start && end) return label(start) + ' a ' + label(end) + (start.getUTCFullYear() !== end.getUTCFullYear() ? ' (' + start.getUTCFullYear() + '/' + end.getUTCFullYear() + ')' : '');
+    return end ? label(end) : 'Período não informado';
+  }
+  const sortWeeks = (a, b) => (weekDates(b).end?.getTime() || 0) - (weekDates(a).end?.getTime() || 0);
+  function latestEntryDate(profile) {
+    const history = [profile.historicoCargos, profile.historico_cargos, profile.historico, profile.movimentacoes].filter(Array.isArray).flat();
+    const dates = [profile.dataEntrada, profile.data_entrada, profile.entrada, profile.ultimaEntrada, profile.dataUltimaEntrada, profile.dataReentrada, profile.dataReadmissao];
+    history.forEach(record => {
+      if (/\b(entrada|reentrada|admissao|readmissao)\b/.test(plain(`${record.tipo || ''} ${record.acao || ''} ${record.titulo || ''}`))) {
+        dates.push(firstValue(record.data, record.dataEvento, record.timestamp));
+      }
+    });
+    return dates.map(docTime).filter(date => date && Number.isFinite(date.getTime())).sort((a, b) => b - a)[0] || null;
+  }
+  const dayKey = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  function performanceMonthNames(entry, now = new Date()) {
+    const start = new Date(`${dayKey(entry).slice(0, 7)}-01T12:00:00Z`);
+    start.setUTCMonth(start.getUTCMonth() - 1); // A semana da entrada pode começar na aba anterior.
+    const end = new Date(`${dayKey(now).slice(0, 7)}-01T12:00:00Z`);
+    const months = new Set();
+    for (let cursor = start; cursor <= end && months.size < 12; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) months.add(CONSULTA_MONTHS[cursor.getUTCMonth()]);
+    return [...months];
+  }
+  function filterCareerWeeks(weeks, entry, now = new Date()) {
+    if (!entry) return [];
+    const filtered = weeks.filter(week => {
+      const { start, end } = weekDates(week);
+      return start && end && dayKey(end) >= dayKey(entry) && dayKey(start) <= dayKey(now);
+    });
+    return [...new Map(filtered.map(week => [dayKey(weekDates(week).start) + ':' + dayKey(weekDates(week).end), week])).values()].sort(sortWeeks);
+  }
+  function sheetNumber(value) {
+    if (value === undefined || value === null || !String(value).trim()) return null;
+    let text = String(value).replace(/[%\s]/g, '');
+    if (text.includes(',')) text = text.replace(/\./g, '').replace(',', '.');
+    const result = Number(text);
+    return Number.isFinite(result) ? result : null;
+  }
+  function summarizeWeeks(weeks, cargo) {
+    const goals = weeks.filter(week => week.metaValue !== null && week.metaValue !== undefined);
+    const bestGoal = goals.reduce((best, week) => !best || week.metaValue > best.metaValue ? week : best, null);
+    const bestLessons = weeks.reduce((best, week) => week.aulasAplicadas === null ? best : !best || week.aulasAplicadas > best.aulasAplicadas ? week : best, null);
+    const completeLessons = weeks.length > 0 && weeks.every(week => week.aulasAplicadas !== null);
+    const best = cargo === 'graduador' ? bestLessons : bestGoal;
+    return {
+      aulasCargoAtual: completeLessons ? weeks.reduce((sum, week) => sum + week.aulasAplicadas, 0) : undefined,
+      aulasAplicadas: completeLessons ? weeks.reduce((sum, week) => sum + week.aulasAplicadas, 0) : undefined,
+      maiorPorcentagem: bestGoal?.metaValue,
+      melhorSemanaAulas: bestLessons?.aulasAplicadas,
+      melhorSemanaLabel: best ? `${weekPeriod(best)} · ${weekDates(best).end.getUTCFullYear()}` : 'Sem registro',
+    };
+  }
   const recentMetaLabel = (performance, profile) => {
-    const history = firstValue(performance.historicoMetas, performance.historico_metas, performance.metas, performance.semanas, profile.historicoMetas, []);
+    if (performance.manualReview) return 'Veja manualmente';
+    if (performance.sourceKind === 'consulta' && !performanceWeeks(performance, profile).length) return 'Sem registro';
+    const rawHistory = firstValue(performance.historicoMetas, performance.historico_metas, performance.metas, performance.semanas, profile.historicoMetas, []);
+    const history = performance.sourceKind === 'consulta' ? rawHistory.filter(week => week.metaValue !== null && week.metaValue !== undefined) : rawHistory;
     if (Array.isArray(history) && history.length) {
-      return history.slice().sort((a, b) => String(firstValue(b.data, b.dataFim, b.fim, b.timestamp) || '').localeCompare(String(firstValue(a.data, a.dataFim, a.fim, a.timestamp) || ''))).slice(0, 2).map(item => {
+      return history.slice().sort(sortWeeks).slice(0, 2).map(item => {
         const value = firstValue(item.porcentagem, item.percentual, item.porcentagemTotal, item.meta);
-        const date = firstValue(item.data, item.dataFim, item.fim, item.timestamp);
-        return `${percentLabel(value)}${date ? ` - ${esc(String(date))}` : ''}`;
+        return `${performance.cargo === 'graduador' ? numberLabel(sheetNumber(value)) + ' graduações' : percentLabel(value)} - ${weekPeriod(item)}`;
       }).join(' | ');
     }
+    if (performance.sourceKind === 'consulta') return 'Sem registro';
     const value = firstValue(performance.porcentagemTotal, performance.meta, profile.meta);
     const date = firstValue(performance.metaData, performance.dataMeta, performance.data_meta, performance.semanaMeta, performance.dataSemana, profile.metaData);
     return value === undefined ? 'Não disponível' : `${percentLabel(value)}${date ? ` - ${dateLabel(date)}` : ''}`;
   };
   const performanceWeeks = (performance, profile) => {
+    if (performance.sourceKind === 'consulta') return performance.semanas || [];
     const values = firstValue(performance.historicoMetas, performance.historico_metas, performance.metas, performance.semanas, profile.historicoMetas, []);
-    return Array.isArray(values) ? values.slice().sort((a, b) => String(firstValue(b.data, b.dataFim, b.fim, b.timestamp) || '').localeCompare(String(firstValue(a.data, a.dataFim, a.fim, a.timestamp) || ''))) : [];
+    return Array.isArray(values) ? values.slice().sort(sortWeeks) : [];
   };
   const performancePanel = (performance, profile, item) => {
+    const manualLink = '<a class="nca-button nca-button--ghost" href="' + esc(performance.sourceUrl || 'https://nexusprof.netlify.app/consulta') + '" target="_blank" rel="noopener noreferrer">Abrir planilha original</a>';
+    if (performance.manualReview) return '<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-locked"><strong>Veja manualmente</strong><p>Data da última entrada não cadastrada ou cargo não identificado. Confira o desempenho na planilha original.</p>' + manualLink + '</div></section>';
+    const cargo = performance.cargo || item.cargo;
     const weeks = performanceWeeks(performance, profile);
-    const careerLessons = firstValue(performance.aulasCargoAtual, performance.aulasAplicadasCargo, performance.aulasAplicadas, profile.aulasAplicadas);
-    const rows = weeks.map((week, index) => `<article class="nca-week-card"><header><strong>Semana ${weeks.length - index}</strong><span>${esc(firstValue(week.data, week.dataFim, week.fim, week.timestamp) || '—')}</span></header><div><b>${percentLabel(firstValue(week.porcentagem, week.percentual, week.porcentagemTotal, week.meta))}</b><small>Meta cumprida</small></div><div><b>${numberLabel(firstValue(week.aulasAplicadas, week.aulas, week.quantidade, week.graduacoes))}</b><small>${item.cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas'}</small></div>${Array.isArray(week.metrics) ? week.metrics.map((value, index) => `<div><b>${numberLabel(value)}</b><small>${esc(CONSULTA_SHEETS[item.cargo]?.metrics[index] || 'Atividade')}</small></div>`).join('') : ''}</article>`).join('');
-    return `<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-summary"><div class="nca-info"><span>Aulas aplicadas na carreira atual</span><strong>${numberLabel(careerLessons)}</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>${weeks.length}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0)}</strong></div><div class="nca-info"><span>Licenças registradas</span><strong>${licenseHistory(item.nick).length}</strong></div><div class="nca-info"><span>Maior resultado</span><strong>${esc(item.cargo === 'graduador' ? numberLabel(firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidade)) : percentLabel(firstValue(performance.maiorPorcentagem, performance.maiorPercentual)))}</strong></div></div><h4>Histórico de licenças</h4><p>${esc(licenseSummary(item.nick))}</p><h4>Metas por semana</h4><p class="nca-save-state">Fonte: ${esc(performance.sourceLabel || 'Não disponível')} · Consultado em ${performance.consultedAt ? esc(new Date(performance.consultedAt).toLocaleString('pt-BR')) : 'não informado'}. Atualização da origem: ${performance.atualizadoEm ? dateLabel(performance.atualizadoEm) : 'não informada'}.</p><div class="nca-week-grid">${rows || '<div class="nca-locked">Nenhum histórico semanal de metas foi encontrado.</div>'}</div></section>`;
+    const valueLabel = value => value === undefined || value === null ? 'Sem registro' : numberLabel(value);
+    const incomplete = performance.failedMonths?.length > 0;
+    const rows = weeks.map(week => '<article class="nca-week-card"><header><strong>' + esc(weekPeriod(week)) + '</strong><span>' + weekDates(week).end.getUTCFullYear() + '</span></header><div><b>' + esc(week.porcentagem === undefined ? 'Sem registro' : cargo === 'graduador' ? numberLabel(week.metaValue) : percentLabel(week.porcentagem)) + '</b><small>' + (cargo === 'graduador' ? 'Total da planilha' : 'Meta cumprida') + '</small></div><div><b>' + valueLabel(week.aulasAplicadas) + '</b><small>' + (cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas') + '</small></div>' + (week.metrics || []).map((value, index) => '<div><b>' + valueLabel(value) + '</b><small>' + esc(CONSULTA_SHEETS[cargo]?.metrics[index] || 'Atividade') + '</small></div>').join('') + '<p>' + esc(week.status || 'Sem classificação') + '</p>' + (week.motivo ? '<p>' + esc(week.motivo) + '</p>' : '') + '</article>').join('');
+    return '<section id="nca-member-performance" class="nca-performance-panel" hidden><p>Desempenho de ' + esc(cargoLabel(cargo)) + ' desde a última entrada em ' + dateLabel(performance.entryDate) + '. Inclui a semana da entrada.</p><div class="nca-performance-summary"><div class="nca-info"><span>' + (cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas') + ' no período encontrado</span><strong>' + valueLabel(performance.aulasCargoAtual) + '</strong></div><div class="nca-info"><span>Semanas registradas</span><strong>' + weeks.length + '</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>' + numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0) + '</strong></div><div class="nca-info"><span>Licenças registradas</span><strong>' + licenseHistory(item.nick).length + '</strong></div><div class="nca-info"><span>Maior resultado no período encontrado</span><strong>' + (cargo === 'graduador' ? valueLabel(performance.melhorSemanaAulas) : performance.maiorPorcentagem === undefined ? 'Sem registro' : percentLabel(performance.maiorPorcentagem)) + '</strong></div><div class="nca-info"><span>Melhor semana</span><strong>' + esc(performance.melhorSemanaLabel || 'Sem registro') + '</strong></div></div><h4>Histórico de licenças</h4><p>' + esc(licenseSummary(item.nick)) + '</p><h4>Metas por semana</h4><p class="nca-save-state">Fonte: ' + esc(performance.sourceLabel) + ' · Consultado em ' + esc(new Date(performance.consultedAt).toLocaleString('pt-BR')) + '. Mesmas planilhas da aba Consulta.</p><p class="nca-save-state">Os totais consideram apenas as semanas disponíveis na planilha atual. Períodos arquivados em outras planilhas precisam de consulta manual.</p>' + (incomplete ? '<p role="alert">Não foi possível consultar: ' + esc(performance.failedMonths.join(', ')) + '. Os resultados estão parciais.</p>' : '') + manualLink + '<div class="nca-week-grid">' + (rows || '<div class="nca-locked">Nenhum desempenho encontrado para este membro no período. Veja manualmente na planilha original.</div>') + '</div></section>';
   };
   const parseCsv = csv => {
     const rows = []; let row = []; let value = ''; let quoted = false;
@@ -175,9 +245,13 @@
       const totalIndex = index + 1 + config.metrics.length;
       const row = rows.slice(1).find(values => norm(values[index]) === norm(nick));
       if (!row) return [];
-      const metrics = config.metrics.map((metric, metricIndex) => Number(String(row[index + 1 + metricIndex] || '').replace('%', '').replace(',', '.')) || 0);
-      const total = String(row[totalIndex] || '0').trim();
-      return [{ data: label, porcentagem: total, percentual: total, aulasAplicadas: metrics.reduce((sum, value) => sum + value, 0), metrics, status: row[totalIndex + 1] || '' }];
+      const metrics = config.metrics.map((metric, metricIndex) => sheetNumber(row[index + 1 + metricIndex]));
+      const total = String(row[totalIndex] ?? '').trim();
+      if (!weekDates({ data: label }).end) return [];
+      if (!total && metrics.every(value => value === null) && !row[totalIndex + 1] && !row[totalIndex + 2]) return [];
+      const lessonIndexes = config.metrics.length === 5 ? [3, 4] : config.metrics.map((_, index) => index);
+      const aulasAplicadas = lessonIndexes.every(index => metrics[index] !== null) ? lessonIndexes.reduce((sum, index) => sum + metrics[index], 0) : null;
+      return [{ data: label, porcentagem: total || undefined, percentual: total || undefined, metaValue: sheetNumber(total), aulasAplicadas, metrics, status: row[totalIndex + 1] || 'Sem classificação', motivo: row[totalIndex + 2] || '' }];
     });
   };
   const allowedRole = value => {
@@ -405,27 +479,56 @@
     }).join(' | ');
   }
 
+  const sheetCache = new Map();
+  async function readPerformanceSheet(config, month) {
+    const cacheKey = config.sheetId + ':' + month;
+    const cached = sheetCache.get(cacheKey);
+    if (cached && Date.now() - cached.time < 60000) return cached.promise;
+    const promise = (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      try {
+        const url = 'https://docs.google.com/spreadsheets/d/' + config.sheetId + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(month);
+        const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Planilha indisponível');
+        const csv = await response.text();
+        if (!parseCsv(csv)[0]?.some(cell => /nick/i.test(cell))) throw new Error('A aba não retornou uma planilha de desempenho');
+        return csv;
+      } finally { clearTimeout(timeout); }
+    })();
+    sheetCache.set(cacheKey, { time: Date.now(), promise });
+    try { return await promise; } catch (error) { sheetCache.delete(cacheKey); throw error; }
+  }
   async function loadPerformance(item) {
-    const id = key(item.nick).replace(/[/\\#[\].]/g, '_');
-    if (S.performance.has(id)) return S.performance.get(id);
-    try {
-      const snapshot = await S.db.collection('desempenho_membros').doc(id).get();
-      const data = snapshot.exists ? snapshot.data() : {};
-      const consultaConfig = CONSULTA_SHEETS[item.cargo];
-      let weekly = [];
-      if (consultaConfig) {
-        const month = CONSULTA_MONTHS[new Date().getMonth()];
-        const url = `https://docs.google.com/spreadsheets/d/${consultaConfig.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(month)}`;
-        try { weekly = consultaWeeks(await (await fetch(url, { cache: 'no-store' })).text(), consultaConfig, item.nick); } catch (error) { console.warn('Consulta semanal indisponível:', error); }
+    const profile = memberProfile(item);
+    const cargo = normalizeCargo(profile.cargo) || item.cargo;
+    const config = CONSULTA_SHEETS[cargo];
+    const entry = latestEntryDate(profile);
+    const cacheKey = norm(item.nick) + ':' + cargo + ':' + (entry?.toISOString() || 'missing');
+    const cached = S.performance.get(cacheKey);
+    if (cached && Date.now() - Date.parse(cached.consultedAt) < 60000 && !cached.failedMonths.length) return cached;
+    const result = {
+      sourceKind: 'consulta', cargo, entryDate: entry, manualReview: !entry,
+      sourceLabel: 'Planilha oficial de ' + cargoLabel(cargo),
+      sourceUrl: config ? 'https://docs.google.com/spreadsheets/d/' + config.sheetId + '/edit' : 'https://nexusprof.netlify.app/consulta',
+      semanas: [], historicoMetas: [], failedMonths: [], consultedAt: new Date().toISOString(),
+    };
+    if (!entry || !config) { result.manualReview = true; return result; }
+    const months = performanceMonthNames(entry);
+    const records = [];
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(3, months.length) }, async () => {
+      while (cursor < months.length) {
+        const month = months[cursor++];
+        try { records.push(...consultaWeeks(await readPerformanceSheet(config, month), config, item.nick)); }
+        catch (error) { result.failedMonths.push(month); console.warn('Consulta de desempenho indisponível:', month, error); }
       }
-      const merged = { ...(weekly.length ? { ...data, semanas: weekly, historicoMetas: weekly } : data), sourceLabel: weekly.length ? 'Planilha de desempenho · ' + CONSULTA_MONTHS[new Date().getMonth()] : 'Registro de desempenho do Nexus', consultedAt: new Date().toISOString() };
-      S.performance.set(id, merged);
-      return merged;
-    } catch (error) {
-      console.warn('Desempenho indisponível:', error);
-      S.performance.set(id, {});
-      return {};
-    }
+    }));
+    result.semanas = filterCareerWeeks(records, entry);
+    result.historicoMetas = result.semanas;
+    Object.assign(result, summarizeWeeks(result.semanas, cargo));
+    S.performance.set(cacheKey, result);
+    return result;
   }
 
   function promotionItems() {
@@ -449,7 +552,7 @@
     const keep = votes.filter(v => plain(v.veredito).includes('mant')).length;
     const selected = S.compare.some(candidate => norm(candidate.nick) === norm(item.nick) && candidate.cargo === item.cargo);
     const lastCareerDate = careerDate(profile, 'promov') || careerDate(profile, 'rebaix');
-    const entryDate = firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada);
+    const entryDate = latestEntryDate(profile);
     const approvedProposals = firstValue(profile.propostas, profile.propostasAprovadas, profile.propostasAprovadasSubgrupos, 0);
     const isGraduator = item.cargo === 'graduador' || normalizeCargo(profile.cargo) === 'graduador';
     const bestResult = isGraduator
@@ -531,7 +634,7 @@
     const weekControls = '<label class="nca-week-select">Semana da comparação<select id="nca-compare-week">' + weeks.map(week => '<option ' + (week === S.compareWeek ? 'selected' : '') + ' value="' + esc(week) + '">' + esc(week) + '</option>').join('') + '</select></label>';
     const cards = await Promise.all(S.compare.map(async item => {
       const profile = memberProfile(item); const performance = await loadPerformance(item); const selectedWeek = performanceWeeks(performance, profile).find(week => String(week.data || week.dataFim || week.fim || '') === S.compareWeek); const votes = promotionVotesFor(item);
-      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(item.cargo === 'professor' ? firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada) : careerDate(profile, 'promov') || careerDate(profile, 'rebaix'))}</dd></div><div><dt>Meta na semana selecionada</dt><dd>${selectedWeek ? percentLabel(firstValue(selectedWeek.porcentagem, selectedWeek.percentual, selectedWeek.porcentagemTotal, selectedWeek.meta)) : 'Sem registro'}</dd></div><div><dt>Aulas aplicadas</dt><dd>${selectedWeek ? numberLabel(firstValue(selectedWeek.aulasAplicadas, selectedWeek.aulas, selectedWeek.graduacoes)) : 'Sem registro'}</dd></div><div><dt>Licença</dt><dd>${esc(licenseSummary(item.nick))}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
+      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(item.cargo === 'professor' ? firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada) : careerDate(profile, 'promov') || careerDate(profile, 'rebaix'))}</dd></div><div><dt>Meta na semana selecionada</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek ? performance.cargo === 'graduador' ? numberLabel(selectedWeek.metaValue) : percentLabel(selectedWeek.porcentagem) : 'Sem registro'}</dd></div><div><dt>Aulas aplicadas</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek?.aulasAplicadas != null ? numberLabel(selectedWeek.aulasAplicadas) : 'Sem registro'}</dd></div><div><dt>Licença</dt><dd>${esc(licenseSummary(item.nick))}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
     }));
     shell(`<div class="nca-compare-bar"><button id="nca-back-promotions" class="nca-button"><i class="fa-solid fa-arrow-left"></i>Voltar às promoções</button><span class="nca-save-state">${S.compare.length} de 3 membros selecionados</span></div><div class="nca-compare-controls">${[0, 1, 2].map(slot => `<label>Membro ${slot + 1}<select data-compare-slot="${slot}"><option value="">Selecione um membro</option>${S.promotions.map((candidate, index) => `<option value="${index}" ${S.compare[slot] === candidate ? 'selected' : ''}>${esc(candidate.nick)} · ${cargoLabel(candidate.cargo)}</option>`).join('')}</select></label>`).join('')}</div>${weekControls}<section class="nca-compare-grid">${cards.join('')}</section>`, 'Comparador de <em>membros.</em>', 'Compare desempenho, situação e votação dos candidatos selecionados.');
     document.getElementById('nca-compare-week').onchange = event => { S.compareWeek = event.target.value; render(); };
@@ -804,7 +907,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports = { latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();
