@@ -549,13 +549,18 @@
     return result;
   }
 
+  function hasPromotionCandidates(filter) {
+    return S.promotions.some(item => filter === 'todos' || item.cargo === filter);
+  }
+
   function promotionItems() {
+    if (!hasPromotionCandidates(S.promotionFilter)) { S.promotionFilter = 'todos'; S.selectedPromotion = 0; }
     return S.promotionFilter === 'todos' ? S.promotions : S.promotions.filter(item => item.cargo === S.promotionFilter);
   }
 
   function promotionIndex(items, active) {
     const filters = [['todos', 'Todos'], ['professor', 'Professores'], ['coordenador', 'Coordenadores'], ['graduador', 'Graduadores']];
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}">${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}" ${hasPromotionCandidates(value) ? '' : 'disabled aria-disabled="true" title="Nenhum membro para avaliar"'}>${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function promotionEditor(item, performance = {}) {
@@ -588,7 +593,7 @@
 
   function bindPromotion(items, item, performance) {
     root.querySelectorAll('[data-index]').forEach(button => button.onclick = () => { S.selectedPromotion = Number(button.dataset.index); render(); });
-    root.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => { S.promotionFilter = button.dataset.filter; S.selectedPromotion = 0; render(); });
+    root.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => { if (!hasPromotionCandidates(button.dataset.filter)) return; S.promotionFilter = button.dataset.filter; S.selectedPromotion = 0; render(); });
     document.getElementById('nca-compare-toggle').onclick = () => toggleCompare(item);
     document.getElementById('nca-open-comments').onclick = () => showPromotionComments(item);
     const infoSection = root.querySelector('.nca-editor .nca-section');
@@ -621,7 +626,7 @@
 
   async function renderPromotions() {
     const items = promotionItems();
-    if (!items.length) { shell('<div class="nca-empty"><p>Nenhum candidato nesta categoria.</p></div>', 'Avaliação de <em>promoções.</em>', 'Consulte os dados, compare candidatos e registre seu parecer.'); return; }
+    if (!items.length) { shell(`<div class="nca-workspace">${promotionIndex([], 0)}<div class="nca-empty"><p>Nenhum candidato disponível para avaliação.</p></div></div>`, 'Avaliação de <em>promoções.</em>', 'Consulte os dados, compare candidatos e registre seu parecer.'); return; }
     S.selectedPromotion = Math.min(S.selectedPromotion, items.length - 1);
     const item = items[S.selectedPromotion];
     const performance = await loadPerformance(item);
@@ -925,7 +930,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports = { hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();

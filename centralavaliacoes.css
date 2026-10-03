@@ -106,6 +106,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 13px; }
 .nca-filter { padding: 6px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
 .nca-filter.is-active { border-color: var(--purple); background: color-mix(in srgb, var(--purple) 17%, transparent); color: var(--text); }
+.nca-filter:disabled { background: #333; border-color: #555; color: #aaa; cursor: not-allowed; box-shadow: none; }
+:root[data-theme="light"] .nca-filter:disabled { background: #eee; border-color: #ccc; color: #777; }
 .nca-index-list { flex: 1; min-height: 0; padding: 10px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .nca-index-item { width: 100%; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 6px; padding: 10px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); cursor: pointer; }
 .nca-index-item:hover, .nca-index-item.is-active { border-color: var(--purple); background: color-mix(in srgb, var(--purple) 11%, var(--surface)); }
