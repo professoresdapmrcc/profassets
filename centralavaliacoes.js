@@ -490,6 +490,12 @@
   }
 
   const isLeadership = () => ['lider', 'vice-lider', 'lider da companhia'].includes(plain(S.profile?.cargo));
+  const normalizeCouncilRole = value => {
+    const role = plain(value);
+    if (role.includes('conselheir')) return 'conselheiro';
+    if (role.includes('estagiari')) return 'estagiario';
+    return role;
+  };
   function leadershipData(cargo = 'professor') {
     const candidates = S.promotions.filter(item => item.cargo === cargo);
     const evaluators = [...new Map(S.users.filter(user => plain(user.status) === 'ativo' && allowedRole(user.cargo)).map(user => [norm(nickOf(user)), user])).values()];
@@ -559,8 +565,8 @@
     const users = S.users
       .filter(user => plain(user.status) === 'ativo' && allowedRole(user.cargo))
       .filter(user => !['pmjrcc'].includes(plain(nickOf(user))))
-      .filter(user => ['conselheiro', 'estagiario'].includes(plain(user.cargo)))
-      .sort((a, b) => (roleOrder[plain(a.cargo)] || 99) - (roleOrder[plain(b.cargo)] || 99) || norm(nickOf(a)).localeCompare(norm(nickOf(b)), 'pt-BR'));
+      .filter(user => ['conselheiro', 'estagiario'].includes(normalizeCouncilRole(user.cargo)))
+      .sort((a, b) => (roleOrder[normalizeCouncilRole(a.cargo)] || 99) - (roleOrder[normalizeCouncilRole(b.cargo)] || 99) || norm(nickOf(a)).localeCompare(norm(nickOf(b)), 'pt-BR'));
     return `<section class="nca-management-block"><h3>Participação do Conselho</h3><p>Votos enviados no cargo selecionado</p><div class="nca-management-team">${users.map(user => {
       const nick = nickOf(user); const done = rows.filter(row => row.votes.some(v => norm(v.avaliador) === norm(nick))).length;
       const leave = licenseHistory(nick).some(record => { const start = docTime(firstValue(record.data_inicio, record.dataInicio, record.data_iso, record.data)); const end = docTime(firstValue(record.data_fim, record.dataFim, record.data_termino, record.dataTermino)); return start && start <= new Date() && (!end || end >= new Date()); });
