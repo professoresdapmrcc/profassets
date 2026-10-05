@@ -596,7 +596,13 @@
       try { const db = await leadershipDatabase(); await db.collection('listas_promocao').doc(rank).set({ nicks, vagas, atualizadoEm: serverTime() }, { merge: true }); await load(); renderLeadership(); toast('Lista salva.'); }
       catch (error) { toast(error.message, true); }
     });
-    document.getElementById('nca-copy-report')?.addEventListener('click', () => managementCopy('*Promovidos da semana #PROF - ' + new Date().toLocaleDateString('pt-BR') + '*\n\n' + PROMOTION_RANKS.map(rank => '*' + cargoLabel(rank) + '*\n' + (managementResults(rank).filter(row => row.verdict === 'Promovido').map(row => row.nick).join('\n') || 'Nenhum promovido.')).join('\n\n')));
+    document.getElementById('nca-copy-report')?.addEventListener('click', () => {
+      const sections = PROMOTION_RANKS.map(rank => {
+        const promoted = managementResults(rank).filter(row => row.verdict === 'Promovido').map(row => row.nick);
+        return promoted.length ? '*' + cargoLabel(rank) + '*\n' + promoted.join('\n') : '';
+      }).filter(Boolean);
+      managementCopy('*Promovidos da semana #PROF - ' + new Date().toLocaleDateString('pt-BR') + '*\n\n' + (sections.join('\n\n') || 'Nenhum membro promovido.'));
+    });
     document.getElementById('nca-export-votes')?.addEventListener('click', () => {
       const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"';
       const csv = '\uFEFF' + [['Avaliador', 'Membro Avaliado', 'Status', 'Comentário', 'Data'], ...rows.flatMap(row => row.votes.map(vote => [vote.avaliador, row.nick, vote.veredito, vote.dissertacao, docTime(vote.atualizadoEm || vote.timestamp)?.toLocaleString('pt-BR') || '']))].map(row => row.map(cell).join(';')).join('\r\n');
