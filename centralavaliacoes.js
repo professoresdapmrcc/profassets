@@ -274,6 +274,29 @@
 
 
   const localDraftKey = () => 'NCA_DRAFTS:' + norm(S.nick) + ':' + (S.cycle?.id || 'current');
+  const draftId = (kind, item) => kind + ':' + (kind === 'promotion' ? item.cargo + ':' + item.nick : item.ordem);
+  function effectiveVote(kind, item) {
+    const vote = (kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item)) || {};
+    const local = readLocalDrafts()[draftId(kind, item)];
+    return local ? { ...vote, rascunho: local.draft } : vote;
+  }
+  function responseLabel(vote) {
+    if (vote?.rascunho) return answered(vote) ? 'Respondida — aguardando envio' : 'Resposta incompleta';
+    return sent(vote) ? 'Avaliação enviada' : answered(vote) ? 'Respondida — aguardando envio' : 'Pendente';
+  }
+  function updateResponseState(kind, item) {
+    const vote = effectiveVote(kind, item);
+    const pill = root.querySelector('.nca-editor-head .nca-status-pill');
+    if (pill) { pill.textContent = responseLabel(vote); pill.classList.toggle('is-sent', answered(vote)); pill.setAttribute('role', 'status'); }
+    const active = root.querySelector('.nca-index-item.is-active');
+    if (active) {
+      const dot = active.querySelector('.nca-dot');
+      if (dot) { dot.classList.toggle('is-done', answered(vote)); dot.classList.toggle('is-draft', !answered(vote)); dot.title = responseLabel(vote); }
+      let label = active.querySelector('.nca-response-label');
+      if (!label) { label = document.createElement('small'); label.className = 'nca-response-label'; active.querySelector('span').append(label); }
+      label.textContent = responseLabel(vote);
+    }
+  }
   function readLocalDrafts() {
     try { return JSON.parse(localStorage.getItem(localDraftKey()) || '{}'); } catch (_) { return {}; }
   }
@@ -320,7 +343,7 @@
     const form = document.getElementById('nca-evaluation-form');
     if (!form) return;
     const button = document.createElement('button'); button.type = 'button'; button.className = 'nca-button nca-button--ghost'; button.textContent = 'Meu histórico de alterações';
-    button.onclick = () => showModal('Meu histórico de alterações', (vote?.historico || []).map(record => '<article class="nca-comment"><strong>' + esc(record.veredito || record.Veredito || '') + '</strong><p>' + esc(record.dissertacao || record.Comentario || '') + '</p><small>' + esc(record.salvoEm || '') + '</small></article>').join('') || '<p>Nenhuma versão anterior enviada.</p>');
+    button.onclick = () => showModal('Meu histórico de alterações', (vote?.historico || []).slice().reverse().map(record => '<article class="nca-comment"><strong>' + esc(record.veredito || record.Veredito || '') + '</strong><p>' + esc(record.dissertacao || record.Comentario || '') + '</p><small>' + esc(docTime(record.salvoEm)?.toLocaleString('pt-BR') || 'Data não registrada') + '</small></article>').join('') || '<p>Nenhuma versão anterior enviada.</p>');
     form.append(button);
   }
 
@@ -447,8 +470,13 @@
     summaryButton.onclick = () => showPendingSummary();
     const deadline = document.createElement('p'); deadline.className = 'nca-save-state'; deadline.textContent = deadlineText();
     root.querySelector('.nca-hero').after(deadline);
-    if (S.lastReceipt) { const receipt = document.createElement('button'); receipt.className = 'nca-button'; receipt.textContent = 'Último comprovante'; receipt.onclick = () => showReceipt(); summaryButton.before(receipt); }
+    if (S.lastReceipt) { const receipt = document.createElement('button'); receipt.className = 'nca-button'; receipt.textContent = 'Último comprovante'; receipt.onclick = () => showReceipt(); batchButton.before(receipt); }
     batchButton.before(summaryButton);
+    if (isLeadership()) {
+      const leadership = document.createElement('button'); leadership.className = 'nca-button'; leadership.textContent = 'Painel da liderança';
+      leadership.onclick = () => { S.screen = 'leadership'; render(); };
+      batchButton.before(leadership);
+    }
   }
 
   function renderHome() {
@@ -458,6 +486,121 @@
     const proposalDone = S.proposals.filter(item => sent(ownProposalVote(item))).length;
     shell(`<section class="nca-home-grid"><button class="nca-entry" data-open="promotions" ${promotionReady ? '' : 'disabled'}><span class="nca-entry-icon"><i class="fa-solid fa-user-graduate"></i></span><span class="nca-entry-meta">${promotionReady ? `${promotionDone}/${S.promotions.length}` : 'Indisponível'}</span><h2>Avaliação de promoções</h2><p>${promotionReady ? 'Avalie os candidatos, consulte os pareceres e compare até três membros.' : 'Não há um ciclo de promoções aberto com candidatos cadastrados.'}</p></button><button class="nca-entry" data-open="proposals" ${proposalReady ? '' : 'disabled'}><span class="nca-entry-icon"><i class="fa-solid fa-file-signature"></i></span><span class="nca-entry-meta">${proposalReady ? `${proposalDone}/${S.proposals.length}` : 'Indisponível'}</span><h2>Avaliação de propostas</h2><p>${proposalReady ? 'Leia as propostas ativas e registre o parecer obrigatório.' : 'Não há propostas disponíveis para avaliação.'}</p></button></section>`);
     root.querySelectorAll('[data-open]').forEach(button => button.onclick = () => { S.screen = button.dataset.open; render(); });
+  }
+
+  const isLeadership = () => ['lider', 'vice-lider', 'lider da companhia'].includes(plain(S.profile?.cargo));
+  function leadershipData(cargo = 'professor') {
+    const candidates = S.promotions.filter(item => item.cargo === cargo);
+    const evaluators = [...new Map(S.users.filter(user => plain(user.status) === 'ativo' && allowedRole(user.cargo)).map(user => [norm(nickOf(user)), user])).values()];
+    const results = candidates.map(item => {
+      const votes = promotionVotesFor(item);
+      const promotes = votes.filter(vote => plain(vote.veredito).includes('promov')).length;
+      const keeps = votes.filter(vote => plain(vote.veredito).includes('mant')).length;
+      return { item, votes, promotes, keeps, verdict: !votes.length ? 'Pendente' : promotes > keeps ? 'Promovido' : keeps > promotes ? 'Mantém' : 'Empate' };
+    });
+    const participation = evaluators.map(user => {
+      const nick = nickOf(user);
+      const done = candidates.filter(item => promotionVotesFor(item).some(vote => norm(vote.avaliador) === norm(nick))).length;
+      return { nick, done, total: candidates.length, pending: candidates.filter(item => !promotionVotesFor(item).some(vote => norm(vote.avaliador) === norm(nick))).map(item => item.nick) };
+    });
+    return { results, participation };
+  }
+
+  function renderLeadership() {
+    if (!isLeadership()) { S.screen = 'home'; return renderHome(); }
+    const cargo = S.leadershipCargo || 'professor';
+    const { results, participation } = leadershipData(cargo);
+    const completed = participation.filter(row => row.total && row.done === row.total).length;
+    shell(`<section class="nca-leadership"><div class="nca-section-title"><div><h2>Painel da liderança</h2><p>Resultados por cargo, seguindo os dados de /companhia/dadospromo.</p></div><button id="nca-refresh-leadership" class="nca-button">Atualizar dados</button></div><div class="nca-filters">${PROMOTION_RANKS.map(rank => `<button data-leadership-cargo="${rank}" class="nca-filter ${rank === cargo ? 'is-active' : ''}">${cargoLabel(rank)}</button>`).join('')}</div><div class="nca-performance-summary"><div class="nca-info"><span>Candidatos</span><strong>${results.length}</strong></div><div class="nca-info"><span>Avaliadores com todos os envios</span><strong>${completed} / ${participation.length}</strong></div><div class="nca-info"><span>Avaliações enviadas</span><strong>${results.reduce((sum, row) => sum + row.votes.length, 0)}</strong></div></div><h3>Resultados e pareceres</h3><p>Somente avaliações enviadas entram na contagem. Rascunhos não contam como votos.</p><div class="nca-leadership-results">${results.map((row, index) => `<article class="nca-comment"><header><strong>${esc(row.item.nick)}</strong><span>${row.verdict}</span></header><p>${row.promotes} para promover · ${row.keeps} para manter · ${row.votes.length} votos</p><button class="nca-button" data-leadership-comments="${index}">Ver pareceres</button></article>`).join('') || '<p>Nenhum candidato neste cargo.</p>'}</div><h3>Participação dos avaliadores</h3><p>Base: membros ativos com cargo autorizado na Central.</p><div class="nca-pending-list">${participation.map(row => `<details class="nca-comment"><summary><strong>${esc(row.nick)}</strong> · ${row.done}/${row.total} enviadas · ${!row.total ? 'Sem avaliações' : row.pending.length ? 'Pendente' : 'Concluído'}</summary><p>${row.pending.length ? 'Falta enviar: ' + esc(row.pending.join(', ')) : 'Nenhuma pendência neste cargo.'}</p></details>`).join('') || '<p>Nenhum avaliador ativo encontrado.</p>'}</div><p><a class="nca-button" href="https://nexusprof.netlify.app/companhia/dadospromo" target="_blank" rel="noopener">Abrir gerenciamento de listas e histórico no Nexus</a></p></section>`, 'Painel da <em>liderança.</em>', 'Acompanhe os envios e consulte os resultados das promoções.');
+    root.querySelectorAll('[data-leadership-cargo]').forEach(button => button.onclick = () => { S.leadershipCargo = button.dataset.leadershipCargo; renderLeadership(); });
+    const announce = document.createElement('button');
+    announce.className = 'nca-button nca-button--gold';
+    announce.textContent = 'Enviar aviso de promoções ao Conselho';
+    announce.onclick = showPromotionAnnouncement;
+    document.getElementById('nca-refresh-leadership').after(announce);
+    root.querySelectorAll('[data-leadership-comments]').forEach(button => button.onclick = () => showPromotionComments(results[Number(button.dataset.leadershipComments)].item));
+    document.getElementById('nca-refresh-leadership').onclick = async event => {
+      event.currentTarget.disabled = true;
+      try { await load(); if (S.screen === 'leadership') renderLeadership(); }
+      catch (error) { toast('Não foi possível atualizar os dados.', true); event.target.disabled = false; }
+    };
+  }
+
+  function weeklyEvolution(weeks, cargo) {
+    const ordered = weeks.slice().sort(sortWeeks).filter(week => week.metaValue != null).slice(0, 2);
+    if (ordered.length < 2) return '<p>São necessários dois períodos com dados para comparar a evolução.</p>';
+    const [latest, previous] = ordered;
+    const delta = latest.metaValue - previous.metaValue;
+    const lessons = latest.aulasAplicadas != null && previous.aulasAplicadas != null ? latest.aulasAplicadas - previous.aulasAplicadas : null;
+    const signed = value => (value > 0 ? '+' : '') + numberLabel(value);
+    return `<p>${esc(weekPeriod(previous))} → ${esc(weekPeriod(latest))}</p><p><strong>${signed(delta)} ${cargo === 'graduador' ? 'graduações' : 'pontos percentuais de meta'}</strong>${lessons === null ? '' : ' · ' + signed(lessons) + (cargo === 'graduador' ? ' graduações aplicadas' : ' aulas aplicadas')}</p><small>Variação entre os dois períodos mais recentes disponíveis.</small>`;
+  }
+
+  function promotionAnnouncement({ period, deadline, url }) {
+    const safe = value => esc(value).replace(/\[/g, '&#91;').replace(/\]/g, '&#93;');
+    const link = new URL(url);
+    if (link.protocol !== 'https:' || !/(^|\.)policiarcc\.com$/i.test(link.hostname)) throw new Error('Informe o link HTTPS da Central no fórum policiarcc.com.');
+    if (!clean(period) || !clean(deadline)) throw new Error('Preencha o período e o prazo.');
+    return `[font=Poppins]<div style="border:1.5rem solid #821F88;border-radius:8px;font-family:Poppins;">[/font][table][tr][td][center][img]https://i.imgur.com/hU7bn8R.gif[/img][/center]
+[table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][center][img]https://i.imgur.com/yDjLGXX.png[/img][/center][size=20][font=Poppins][color=white][b]AVALIAÇÃO DE PROMOÇÕES[/b][/color][/font][/size][/td][/tr][/table]
+<div style="padding:1.5%;border:1px solid #bdbdbd;border-radius:8px;">[center]Olá, [b]{USERNAME}[/b].
+
+[justify]A Liderança dos Professores vem, por este meio, informá-lo da [b]atualização da Central de Avaliações de Promoções[/b], referente às promoções a serem realizadas no período de [b]${safe(period)}[/b].
+
+Todos os estagiários e conselheiros têm a obrigação de realizar a avaliação, tendo [b]prazo até ${safe(deadline)}[/b]. Estão isentos da avaliação todos aqueles que estejam de licença ou reserva.[/justify]
+
+[table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][size=16][font=Poppins][b][url=${safe(link.href)}][color=#ffffff]CLIQUE AQUI PARA ACESSAR[/color][/url][/b][/font][/size][/td][/tr][/table][/center]</div>[/td][/tr][/table]</div>
+[font=Poppins][center]Atentamente,
+[img]https://i.imgur.com/1kZvQHs.png[/img][/center][/font]`;
+  }
+
+  async function sendPromotionAnnouncement(message) {
+    if (!isLeadership()) throw new Error('Somente a liderança pode enviar este aviso.');
+    await confirmForumUser();
+    const compose = await fetch('/privmsg?mode=post', { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
+    if (!compose.ok) throw new Error('Não foi possível abrir o formulário de MP.');
+    const page = new DOMParser().parseFromString(await compose.text(), 'text/html');
+    const form = page.querySelector('textarea[name="message"]')?.closest('form');
+    if (!form) throw new Error('Entre novamente no fórum. O formulário de MP não foi encontrado.');
+    const action = new URL(form.getAttribute('action') || '/privmsg', location.href);
+    if (action.origin !== location.origin || action.pathname !== '/privmsg') throw new Error('O formulário retornou um destino inesperado.');
+    const body = new URLSearchParams();
+    new FormData(form).forEach((value, key) => { if (typeof value === 'string') body.append(key, value); });
+    for (const key of [...body.keys()]) if (/^(username|usergroup|preview)/.test(key)) body.delete(key);
+    body.set('usergroup', '397'); body.set('mode', 'post'); body.set('folder', 'inbox');
+    body.set('subject', '[PROF] AVALIAÇÃO DE PROMOÇÕES'); body.set('message', message); body.set('post', 'Enviar');
+    const response = await fetch(action.href, { method: 'POST', credentials: 'same-origin', body, signal: AbortSignal.timeout(30000) });
+    if (!response.ok) throw new Error('O fórum recusou a MP (HTTP ' + response.status + ').');
+    const result = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const text = result.body.textContent.replace(/\s+/g, ' ').trim();
+    if (!/(mensagem (?:privada )?foi enviada|mensagem enviada com sucesso|message has been sent)/i.test(text)) {
+      const error = result.querySelector('.error, .alert-error, .gen.error')?.textContent?.trim();
+      throw new Error(error || 'O fórum não confirmou o envio. Confira sua caixa de saída antes de tentar novamente.');
+    }
+  }
+
+  function showPromotionAnnouncement() {
+    if (!isLeadership()) return;
+    showModal('Aviso de promoções — grupo g397', `<p>A MP será enviada pela sua conta do fórum aos membros do grupo g397, incluindo estagiários e conselheiros.</p><form id="nca-announcement" class="nca-announcement"><label>Período das promoções<input name="period" required maxlength="150" placeholder="Ex.: 07 Out 2026 a 09 Out 2026"></label><label>Prazo, com data e horários BR/PT<input name="deadline" required maxlength="200" placeholder="Ex.: 11 Out 2026, às 13h59 BR / 17h59 PT"></label><label>Link da Central no fórum<input name="url" type="url" required value="${esc(location.origin + location.pathname)}"></label><button class="nca-button" type="submit">Revisar BBCode</button><label>Mensagem que será enviada<textarea id="nca-announcement-code" readonly rows="12"></textarea></label><p id="nca-announcement-status" role="status"></p><button id="nca-announcement-send" type="button" class="nca-button nca-button--gold" disabled>Confirmar envio da MP ao grupo g397</button></form>`);
+    const form = document.getElementById('nca-announcement');
+    const code = document.getElementById('nca-announcement-code');
+    const send = document.getElementById('nca-announcement-send');
+    const status = document.getElementById('nca-announcement-status');
+    form.oninput = () => { send.disabled = true; code.value = ''; status.textContent = 'Revise novamente após alterar os dados.'; };
+    form.onsubmit = event => {
+      event.preventDefault();
+      try { code.value = promotionAnnouncement(Object.fromEntries(new FormData(form))); send.disabled = false; status.textContent = 'Confira período, prazo e link antes de confirmar.'; }
+      catch (error) { status.textContent = error.message; }
+    };
+    send.onclick = async () => {
+      if (S.sendingAnnouncement) return;
+      S.sendingAnnouncement = true;
+      form.querySelectorAll('input, button').forEach(node => node.disabled = true);
+      status.textContent = 'Enviando MP… Aguarde a confirmação do fórum.';
+      try { await sendPromotionAnnouncement(code.value); status.textContent = 'O fórum confirmou o envio da MP ao grupo g397.'; }
+      catch (error) { status.textContent = error.message + ' O BBCode permanece disponível para cópia.'; }
+      finally { S.sendingAnnouncement = false; }
+    };
   }
 
   function memberProfile(item) {
@@ -560,7 +703,7 @@
 
   function promotionIndex(items, active) {
     const filters = [['todos', 'Todos'], ['professor', 'Professores'], ['coordenador', 'Coordenadores'], ['graduador', 'Graduadores']];
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}" ${hasPromotionCandidates(value) ? '' : 'disabled aria-disabled="true" title="Nenhum membro para avaliar"'}>${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownPromotionVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Candidatos</h2><p>${items.length} membro${items.length === 1 ? '' : 's'} nesta visualização</p><div class="nca-filters">${filters.map(([value, label]) => `<button class="nca-filter ${S.promotionFilter === value ? 'is-active' : ''}" data-filter="${value}" ${hasPromotionCandidates(value) ? '' : 'disabled aria-disabled="true" title="Nenhum membro para avaliar"'}>${label}</button>`).join('')}</div></div><div class="nca-index-list">${items.map((item, index) => { const vote = effectiveVote('promotion', item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><img src="${avatar(item.nick)}" alt=""><span><strong>${esc(item.nick)}</strong><small>${cargoLabel(item.cargo)}</small><small class="nca-response-label">${responseLabel(vote)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function promotionEditor(item, performance = {}) {
@@ -608,10 +751,28 @@
       heading?.replaceWith(tabs);
       infoSection.insertAdjacentHTML('beforeend', performancePanel(performance, memberProfile(item), item));
       const performanceNode = document.getElementById('nca-member-performance');
+      const evolution = document.createElement('section'); evolution.className = 'nca-performance-block';
+      evolution.innerHTML = '<h4>Evolução entre semanas</h4>' + weeklyEvolution(performanceWeeks(performance, memberProfile(item)), item.cargo);
+      performanceNode.append(evolution);
+      const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'nca-button'; refresh.textContent = 'Atualizar desempenho';
+      refresh.onclick = async () => {
+        refresh.disabled = true; refresh.textContent = 'Atualizando…';
+        try {
+          sheetCache.clear(); S.performance.clear();
+          const updated = await loadPerformance(item);
+          if (!infoSection.isConnected) return;
+          document.getElementById('nca-member-performance').outerHTML = performancePanel(updated, memberProfile(item), item);
+          const next = document.getElementById('nca-member-performance'); next.hidden = false;
+          evolution.innerHTML = '<h4>Evolução entre semanas</h4>' + weeklyEvolution(performanceWeeks(updated, memberProfile(item)), item.cargo);
+          next.append(evolution, refresh);
+        } catch (error) { toast('Não foi possível atualizar o desempenho.', true); }
+        finally { refresh.disabled = false; refresh.textContent = 'Atualizar desempenho'; }
+      };
+      performanceNode.append(refresh);
       tabs.querySelectorAll('[data-member-tab]').forEach(button => button.onclick = () => {
         const showPerformance = button.dataset.memberTab === 'desempenho';
         infoGrid.hidden = showPerformance;
-        performanceNode.hidden = !showPerformance;
+        document.getElementById('nca-member-performance').hidden = !showPerformance;
         tabs.querySelectorAll('.nca-member-tab').forEach(tab => tab.classList.toggle('is-active', tab === button));
       });
     }
@@ -633,6 +794,7 @@
     shell(`<div class="nca-compare-bar"><div class="nca-compare-list">${S.compare.map(candidate => `<span class="nca-compare-chip">${esc(candidate.nick)}<button data-remove-compare="${esc(candidate.nick)}" data-cargo="${candidate.cargo}"><i class="fa-solid fa-xmark"></i></button></span>`).join('') || '<span class="nca-save-state">Selecione até três membros para comparar.</span>'}</div><button id="nca-show-compare" class="nca-button nca-button--primary" ${S.compare.length < 2 ? 'disabled' : ''}><i class="fa-solid fa-scale-balanced"></i>Comparar ${S.compare.length || ''}</button></div><div class="nca-workspace">${promotionIndex(items, S.selectedPromotion)}${promotionEditor(item, performance)}</div>`, 'Avaliação de <em>promoções.</em>', 'Pareceres visíveis ao Conselho e comparação livre de até três membros.');
     bindPromotion(items, item, performance);
     bindHistory(ownPromotionVote(item));
+    bindRecovery('promotion', item);
     document.getElementById('nca-show-compare').onclick = () => { S.screen = 'compare'; render(); };
     root.querySelectorAll('[data-remove-compare]').forEach(button => button.onclick = () => { S.compare = S.compare.filter(candidate => !(norm(candidate.nick) === norm(button.dataset.removeCompare) && candidate.cargo === button.dataset.cargo)); render(); });
   }
@@ -672,7 +834,7 @@
   }
 
   function proposalIndex(items, active) {
-    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = ownProposalVote(item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
+    return `<aside class="nca-index"><div class="nca-index-head"><h2>Propostas</h2><p>${items.length} pauta${items.length === 1 ? '' : 's'} disponíveis</p></div><div class="nca-index-list">${items.map((item, index) => { const vote = effectiveVote('proposal', item); return `<button class="nca-index-item ${index === active ? 'is-active' : ''}" data-index="${index}"><span class="nca-brand-mark" style="width:36px;height:36px;border-radius:10px;font-size:14px">${item.ordem}</span><span><strong>${esc(item.titulo)}</strong><small>${esc(item.autor)}</small><small class="nca-response-label">${responseLabel(vote)}</small></span><i class="nca-dot ${answered(vote) ? 'is-done' : 'is-draft'}"></i></button>`; }).join('')}</div></aside>`;
   }
 
   function canReadProposalVotes(profile, vote) {
@@ -682,7 +844,7 @@
 
   function proposalEditor(item) {
     const vote = ownProposalVote(item) || {};
-    const draft = vote.rascunho || {};
+    const draft = effectiveVote('proposal', item).rascunho || {};
     const verdict = clean(draft.veredito ?? vote.Veredito ?? vote.veredito);
     const comment = clean(draft.comentario ?? vote.Comentario ?? vote.comentario);
     const otherVotes = proposalVotesFor(item);
@@ -698,6 +860,7 @@
     root.querySelectorAll('[data-index]').forEach(button => button.onclick = () => { S.selectedProposal = Number(button.dataset.index); render(); });
     const form = document.getElementById('nca-evaluation-form');
     bindHistory(ownProposalVote(item));
+    bindRecovery('proposal', item);
     form.addEventListener('input', () => { document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length; scheduleDraft('proposal', item); });
     form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
     form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
@@ -713,12 +876,14 @@
   function scheduleDraft(kind, item) {
     clearTimeout(S.saveTimer);
     const draft = formDraft();
+    if (S.busy) return;
     storeLocalDraft(kind, item, draft);
+    updateResponseState(kind, item);
     const dot = root.querySelector('.nca-index-item.is-active .nca-dot');
     if (dot) { dot.classList.toggle('is-done', Boolean(draft.veredito && draft.comentario)); dot.classList.toggle('is-draft', !draft.veredito || !draft.comentario); dot.title = draft.veredito && draft.comentario ? 'Resposta completa' : 'Resposta incompleta'; }
     setSaveLabel('Salvando rascunho…', 'fa-spinner fa-spin');
     S.pendingDrafts ||= new Map();
-    const draftKey = kind + ':' + (item.nick || item.ordem);
+    const draftKey = draftId(kind, item);
     S.pendingDrafts.set(draftKey, { kind, item, draft });
     if (!S.savingDrafts) {
       S.savingDrafts = true;
@@ -738,6 +903,29 @@
   function setSaveLabel(text, icon = 'fa-cloud') {
     const label = document.getElementById('nca-save-label');
     if (label) label.innerHTML = `<i class="fa-solid ${icon}"></i>${esc(text)}`;
+  }
+
+  function bindRecovery(kind, item) {
+    S.activeDraftId = draftId(kind, item);
+    updateResponseState(kind, item);
+    const label = document.getElementById('nca-save-label');
+    label?.setAttribute('role', 'status');
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'nca-button nca-button--ghost';
+    button.textContent = 'Tentar salvar novamente';
+    button.onclick = async () => {
+      button.disabled = true;
+      await S.saveQueue;
+      storeLocalDraft(kind, item, formDraft());
+      await recoverLocalDrafts();
+      button.disabled = false;
+      updateResponseState(kind, item);
+    };
+    label?.after(button);
+    const vote = effectiveVote(kind, item);
+    if (readLocalDrafts()[draftId(kind, item)]) setSaveLabel('Cópia recuperada neste navegador. Aguardando sincronização.', 'fa-laptop');
+    else if (vote.rascunho?.atualizadoEm) setSaveLabel('Rascunho salvo em ' + new Date(vote.rascunho.atualizadoEm).toLocaleString('pt-BR') + '. Aguardando envio.');
+    else if (sent(vote)) setSaveLabel('Avaliação enviada e contabilizada.', 'fa-circle-check');
   }
 
   async function saveDraft(kind, item, draft = formDraft()) {
@@ -764,9 +952,15 @@
         try { localStorage.setItem(localDraftKey(), JSON.stringify(local)); } catch (_) {}
       }
       S.draftError = Object.keys(readLocalDrafts()).length > 0;
-      setSaveLabel(`Rascunho salvo às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Ainda não foi enviado.`, 'fa-circle-check');
+      if (S.activeDraftId === draftId(kind, item)) {
+        updateResponseState(kind, item);
+        if (readLocalDrafts()[draftId(kind, item)]) setSaveLabel('Salvando as últimas alterações…', 'fa-spinner fa-spin');
+        else setSaveLabel(`Rascunho salvo às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Ainda não foi enviado.`, 'fa-circle-check');
+      }
     } catch (error) {
-      S.draftError = true; console.error(error); setSaveLabel('Falha ao salvar. Seu texto continua nesta tela.', 'fa-triangle-exclamation'); toast(error.message || 'Falha ao salvar rascunho.', true);
+      S.draftError = true; console.error(error);
+      if (S.activeDraftId === draftId(kind, item)) setSaveLabel('Falha ao salvar. Tente novamente; a cópia local foi preservada.', 'fa-triangle-exclamation');
+      toast(error.message || 'Falha ao salvar rascunho.', true);
     }
   }
 
@@ -795,6 +989,7 @@
     if (!cycleOpen()) return toast('O ciclo de promoções está encerrado.', true);
     S.busy = true;
     try {
+      await S.saveQueue;
       await confirmForumUser();
       const id = `${item.cargo}_${item.nick}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`;
       const ref = S.db.collection('avaliacoes_nexus').doc(id);
@@ -814,6 +1009,7 @@
     if (!draft.veredito || !draft.comentario) return toast('Escolha o veredito e escreva a justificativa.', true);
     S.busy = true;
     try {
+      await S.saveQueue;
       await confirmForumUser();
       const id = `voto_${item.ordem}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`;
       const ref = S.db.collection('nexus_config').doc('Propostas').collection('votos_conselho').doc(id);
@@ -829,8 +1025,8 @@
   async function showPendingSummary() {
     await S.saveQueue;
     const entries = [
-      ...S.promotions.map((item, index) => ({ kind: 'promotion', index, title: item.nick, vote: ownPromotionVote(item) })),
-      ...S.proposals.map((item, index) => ({ kind: 'proposal', index, title: `Proposta ${item.ordem}: ${item.titulo}`, vote: ownProposalVote(item) })),
+      ...S.promotions.map((item, index) => ({ kind: 'promotion', index, title: item.nick, vote: effectiveVote('promotion', item) })),
+      ...S.proposals.map((item, index) => ({ kind: 'proposal', index, title: `Proposta ${item.ordem}: ${item.titulo}`, vote: effectiveVote('proposal', item) })),
     ].map(entry => {
       const value = entry.vote?.rascunho ?? entry.vote ?? {};
       const missing = [];
@@ -868,6 +1064,7 @@
     if (S.busy) return;
     S.busy = true;
     try {
+      await S.saveQueue;
       await confirmForumUser();
       const batch = S.db.batch();
       drafts.forEach(({ kind, item }) => {
@@ -910,6 +1107,7 @@
   function render() {
     if (S.screen === 'promotions') return void renderPromotions();
     if (S.screen === 'proposals') return renderProposals();
+    if (S.screen === 'leadership') return renderLeadership();
     if (S.screen === 'compare') return void renderCompare();
     renderHome();
   }
@@ -935,7 +1133,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports = { responseLabel, leadershipData, weeklyEvolution, answered, historyOf, canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();

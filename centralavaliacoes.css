@@ -23,6 +23,27 @@
   --font: Poppins, system-ui, sans-serif;
   --title: "Barlow Condensed", Poppins, sans-serif;
 }
+
+.nca-response-label { color: var(--purple-soft); white-space: normal; line-height: 1.45; margin-top: 4px; }
+.nca-announcement, .nca-announcement label { display: grid; gap: 10px; }
+.nca-announcement { gap: 18px; }
+.nca-announcement input, .nca-announcement textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--field); color: var(--text); font: inherit; }
+.nca-announcement textarea { resize: vertical; }
+.nca-leadership > .nca-section-title { flex-wrap: wrap; }
+.nca-status-pill { white-space: normal; max-width: 250px; text-align: center; }
+.nca-leadership { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(16px, 3vw, 32px); }
+.nca-leadership h3 { margin-top: 28px; }
+.nca-leadership p { color: var(--muted); }
+.nca-leadership .nca-performance-summary { margin-top: 20px; }
+.nca-leadership-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.nca-leadership summary { cursor: pointer; line-height: 1.7; overflow-wrap: anywhere; }
+.nca-actions { flex-wrap: wrap; }
+.nca-editor-actions { flex-wrap: wrap; gap: 12px; }
+.nca-performance-block strong { color: var(--gold); }
+@media (max-width: 640px) {
+  .nca-leadership .nca-section-title { align-items: flex-start; flex-direction: column; }
+  .nca-status-pill { max-width: 100%; }
+}
 :root[data-theme="light"] {
   color-scheme: light;
   --page: #faf6fb;
