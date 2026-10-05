@@ -30,6 +30,45 @@
 .nca-announcement input, .nca-announcement textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--field); color: var(--text); font: inherit; }
 .nca-announcement textarea { resize: vertical; }
 .nca-leadership > .nca-section-title { flex-wrap: wrap; }
+.nca-management { margin: 24px 0; }
+.nca-management-heading, .nca-management-block, .nca-management-card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); }
+.nca-management-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.nca-management h2, .nca-management h3 { margin: 0 0 8px; }
+.nca-management-heading h2 { font: 700 24px var(--font); }
+.nca-management-heading p, .nca-management p, .nca-management small { color: var(--muted); }
+.nca-management-heading nav, .nca-management-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.nca-management-heading nav { padding: 6px; background: var(--page); border-radius: 14px; }
+.nca-management-tools, .nca-management-block { margin-bottom: 24px; }
+.nca-management-tools > div { flex: 1; }
+.nca-management select { background: var(--field); color: var(--text); border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px; max-width: 100%; margin: 8px; }
+.nca-management-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.nca-management-card { min-width: 0; border-top: 4px solid var(--purple); }
+.nca-management-card:nth-child(3n+2) { border-top-color: var(--gold); }
+.nca-management-card:nth-child(3n+3) { border-top-color: var(--purple-soft); }
+.nca-management-card header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
+.nca-management-card header h3 { overflow-wrap: anywhere; }
+.nca-management-card img { width: 48px; height: 48px; object-fit: contain; }
+.nca-management-comments { background: var(--field); border: 1px solid var(--line); border-radius: 12px; padding: 16px; max-height: 240px; overflow: auto; margin-bottom: 16px; }
+.nca-management-comments article + article { border-top: 1px solid var(--line); padding-top: 12px; }
+.nca-management-comments p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nca-management-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.nca-management-stats .nca-info { text-align: center; border-bottom: 2px solid var(--purple); }
+.nca-management-stats strong { font-size: 28px; }
+.nca-management-team { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.nca-management-person { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-left: 3px solid var(--warning); border-radius: 12px; padding: 12px; }
+.nca-management-person.is-complete { border-left-color: var(--success); }
+.nca-management-person.is-leave { border-left-color: var(--faint); opacity: .72; }
+.nca-management-person img { width: 40px; height: 40px; }
+.nca-management-person div { min-width: 0; }
+.nca-management-person strong { overflow-wrap: anywhere; }
+.nca-management-person small, .nca-management-person span { display: block; font-size: 11px; }
+.nca-management-person b { margin-left: auto; color: var(--warning); font-size: 11px; white-space: nowrap; }
+.nca-management-person.is-complete b { color: var(--success); }
+.nca-management-person.is-leave b { color: var(--muted); }
+.nca-management-danger { margin-top: 32px; padding: 32px; text-align: center; border: 1px solid var(--danger); border-radius: 20px; background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.nca-management-danger button { color: var(--danger); }
+@media (max-width: 1000px) { .nca-management-heading { align-items: flex-start; flex-direction: column; } .nca-management-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .nca-management-grid { grid-template-columns: 1fr; } .nca-management-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nca-management-heading, .nca-management-block, .nca-management-card { padding: 16px; } }
 .nca-status-pill { white-space: normal; max-width: 250px; text-align: center; }
 .nca-leadership { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(16px, 3vw, 32px); }
 .nca-leadership h3 { margin-top: 28px; }

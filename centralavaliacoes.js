@@ -410,6 +410,7 @@
       safeGet(settings.get(), null),
     ]);
     const lists = listsSnap.docs.map(dataOf);
+    S.promotionLists = lists;
     S.promotions = lists.flatMap(list => {
       const cargo = normalizeCargo(list.id);
       if (!cargo || !Array.isArray(list.nicks)) return [];
@@ -506,24 +507,129 @@
     return { results, participation };
   }
 
+  function managementResults(cargo, backup) {
+    const lists = backup?.listas || S.promotionLists || [];
+    const votes = (backup?.avaliacoes || S.promotionVotes).filter(sent);
+    return (lists.find(list => list.id === cargo)?.nicks || []).map(nick => {
+      const selected = votes.filter(v => norm(v.nick_avaliado) === norm(nick) && normalizeCargo(v.cargo) === cargo);
+      const promotes = selected.filter(v => plain(v.veredito).includes('promov')).length;
+      const keeps = selected.filter(v => plain(v.veredito).includes('mant')).length;
+      return { nick, votes: selected, promotes, keeps, verdict: !selected.length ? 'Pendente' : promotes > keeps ? 'Promovido' : keeps > promotes ? 'Mantém' : 'Empate' };
+    });
+  }
+
+  async function leadershipDatabase() {
+    if (!isLeadership()) throw new Error('Acesso exclusivo da liderança.');
+    const app = firebase.apps.find(app => app.name === 'nca-leadership') || firebase.initializeApp(FIREBASE_CONFIG, 'nca-leadership');
+    const auth = app.auth();
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      await confirmForumUser();
+      const profile = await app.firestore().collection('users').doc(auth.currentUser.uid).get();
+      if (profile.exists && norm(nickOf(profile.data())) === norm(S.nick) && plain(profile.data().status) === 'ativo' && ['lider', 'vice-lider'].includes(plain(profile.data().cargo))) return app.firestore();
+      await auth.signOut();
+    }
+    const nonce = crypto.randomUUID();
+    const popup = window.open('https://nexusprof.netlify.app/auth/central-lideranca?nonce=' + encodeURIComponent(nonce), 'nca-leadership-login', 'width=560,height=720');
+    if (!popup) throw new Error('Permita a janela de autorização para conectar sua conta de liderança.');
+    return new Promise((resolve, reject) => {
+      const finish = () => { clearTimeout(timeout); clearInterval(closed); window.removeEventListener('message', receive); };
+      const timeout = setTimeout(() => { finish(); reject(new Error('A autorização expirou. Tente novamente.')); }, 180000);
+      const closed = setInterval(() => { if (popup.closed) { finish(); reject(new Error('A janela de autorização foi fechada.')); } }, 1000);
+      const receive = async event => {
+        if (event.origin !== 'https://nexusprof.netlify.app' || event.source !== popup || event.data?.type !== 'nca-leadership-session' || event.data?.nonce !== nonce) return;
+        finish();
+        try {
+          await confirmForumUser();
+          if (norm(event.data.nickname) !== norm(S.nick)) throw new Error('Autorize a mesma conta que está conectada no fórum.');
+          await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+          await auth.signInWithCustomToken(event.data.customToken);
+          resolve(app.firestore());
+        } catch (error) { reject(error); }
+      };
+      window.addEventListener('message', receive);
+    });
+  }
+
+  function managementCards(rows) {
+    return `<div class="nca-management-stats">${[['Total', rows.length], ['Promovidos', rows.filter(r => r.verdict === 'Promovido').length], ['Mantidos', rows.filter(r => r.verdict === 'Mantém').length], ['Pendentes / empates', rows.filter(r => ['Pendente', 'Empate'].includes(r.verdict)).length]].map(([label, value]) => `<div class="nca-info"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div><div class="nca-management-grid">${rows.map(row => `<article class="nca-management-card" data-verdict="${esc(row.verdict)}"><header><img src="${avatar(row.nick)}" alt=""><div><h3>${esc(row.nick)}</h3><small>${row.promotes} promove · ${row.keeps} mantém</small></div><span class="nca-status-pill">${esc(row.verdict)}</span></header><div class="nca-management-comments">${row.votes.map(vote => `<article><strong>${esc(vote.avaliador)} · ${esc(vote.veredito)}</strong><p>${esc(vote.dissertacao || 'Sem justificativa.')}</p></article>`).join('') || '<p>Aguardando avaliações.</p>'}</div><button class="nca-button nca-button--ghost" data-copy-nick="${esc(row.nick)}">Copiar nick</button></article>`).join('') || '<p>Nenhum membro neste cargo.</p>'}</div>`;
+  }
+
+  function managementParticipation(rows) {
+    const users = S.users.filter(user => plain(user.status) === 'ativo' && allowedRole(user.cargo));
+    return `<section class="nca-management-block"><h3>Participação do Conselho</h3><p>Votos enviados no cargo selecionado</p><div class="nca-management-team">${users.map(user => {
+      const nick = nickOf(user); const done = rows.filter(row => row.votes.some(v => norm(v.avaliador) === norm(nick))).length;
+      const leave = licenseHistory(nick).some(record => { const start = docTime(firstValue(record.data_inicio, record.dataInicio, record.data_iso, record.data)); const end = docTime(firstValue(record.data_fim, record.dataFim, record.data_termino, record.dataTermino)); return start && start <= new Date() && (!end || end >= new Date()); });
+      const status = leave ? 'Em licença' : rows.length && done === rows.length ? 'Concluído' : done ? 'Em andamento' : 'Pendente';
+      return `<article class="nca-management-person ${leave ? 'is-leave' : done === rows.length && rows.length ? 'is-complete' : 'is-pending'}"><img src="${avatar(nick)}" alt=""><div><strong>${esc(nick)}</strong><small>${esc(user.cargo)}</small><span>${leave ? 'Afastado no período' : `${done}/${rows.length} enviadas`}</span></div><b>${status}</b></article>`;
+    }).join('')}</div></section>`;
+  }
+
+  async function managementCopy(text) {
+    try { await navigator.clipboard.writeText(text); toast('Copiado.'); }
+    catch (_) { showModal('Copiar texto', `<textarea class="nca-textarea" readonly>${esc(text)}</textarea>`); }
+  }
+
   function renderLeadership() {
     if (!isLeadership()) { S.screen = 'home'; return renderHome(); }
-    const cargo = S.leadershipCargo || 'professor';
-    const { results, participation } = leadershipData(cargo);
-    const completed = participation.filter(row => row.total && row.done === row.total).length;
-    shell(`<section class="nca-leadership"><div class="nca-section-title"><div><h2>Painel da liderança</h2><p>Resultados por cargo, seguindo os dados de /companhia/dadospromo.</p></div><button id="nca-refresh-leadership" class="nca-button">Atualizar dados</button></div><div class="nca-filters">${PROMOTION_RANKS.map(rank => `<button data-leadership-cargo="${rank}" class="nca-filter ${rank === cargo ? 'is-active' : ''}">${cargoLabel(rank)}</button>`).join('')}</div><div class="nca-performance-summary"><div class="nca-info"><span>Candidatos</span><strong>${results.length}</strong></div><div class="nca-info"><span>Avaliadores com todos os envios</span><strong>${completed} / ${participation.length}</strong></div><div class="nca-info"><span>Avaliações enviadas</span><strong>${results.reduce((sum, row) => sum + row.votes.length, 0)}</strong></div></div><h3>Resultados e pareceres</h3><p>Somente avaliações enviadas entram na contagem. Rascunhos não contam como votos.</p><div class="nca-leadership-results">${results.map((row, index) => `<article class="nca-comment"><header><strong>${esc(row.item.nick)}</strong><span>${row.verdict}</span></header><p>${row.promotes} para promover · ${row.keeps} para manter · ${row.votes.length} votos</p><button class="nca-button" data-leadership-comments="${index}">Ver pareceres</button></article>`).join('') || '<p>Nenhum candidato neste cargo.</p>'}</div><h3>Participação dos avaliadores</h3><p>Base: membros ativos com cargo autorizado na Central.</p><div class="nca-pending-list">${participation.map(row => `<details class="nca-comment"><summary><strong>${esc(row.nick)}</strong> · ${row.done}/${row.total} enviadas · ${!row.total ? 'Sem avaliações' : row.pending.length ? 'Pendente' : 'Concluído'}</summary><p>${row.pending.length ? 'Falta enviar: ' + esc(row.pending.join(', ')) : 'Nenhuma pendência neste cargo.'}</p></details>`).join('') || '<p>Nenhum avaliador ativo encontrado.</p>'}</div><p><a class="nca-button" href="https://nexusprof.netlify.app/companhia/dadospromo" target="_blank" rel="noopener">Abrir gerenciamento de listas e histórico no Nexus</a></p></section>`, 'Painel da <em>liderança.</em>', 'Acompanhe os envios e consulte os resultados das promoções.');
-    root.querySelectorAll('[data-leadership-cargo]').forEach(button => button.onclick = () => { S.leadershipCargo = button.dataset.leadershipCargo; renderLeadership(); });
-    const announce = document.createElement('button');
-    announce.className = 'nca-button nca-button--gold';
-    announce.textContent = 'Enviar aviso de promoções ao Conselho';
-    announce.onclick = showPromotionAnnouncement;
-    document.getElementById('nca-refresh-leadership').after(announce);
-    root.querySelectorAll('[data-leadership-comments]').forEach(button => button.onclick = () => showPromotionComments(results[Number(button.dataset.leadershipComments)].item));
-    document.getElementById('nca-refresh-leadership').onclick = async event => {
-      event.currentTarget.disabled = true;
-      try { await load(); if (S.screen === 'leadership') renderLeadership(); }
-      catch (error) { toast('Não foi possível atualizar os dados.', true); event.target.disabled = false; }
-    };
+    const tab = S.managementTab || 'listas'; const cargo = S.leadershipCargo || 'professor';
+    const backup = S.managementBackups?.find(item => item.id === S.managementBackup);
+    const rows = tab === 'historico' && !backup ? [] : managementResults(cargo, tab === 'historico' ? backup : null);
+    const rankOptions = PROMOTION_RANKS.map(rank => `<option value="${rank}" ${rank === cargo ? 'selected' : ''}>${cargoLabel(rank)}</option>`).join('');
+    let content;
+    if (tab === 'listas') content = `<div class="nca-management-grid">${PROMOTION_RANKS.map(rank => {
+      const list = S.promotionLists?.find(item => item.id === rank) || { nicks: [], vagas: 0 };
+      return `<form data-management-list="${rank}" class="nca-management-card nca-announcement"><h3>${cargoLabel(rank)}</h3><label>Um nick por linha<textarea name="nicks" rows="10">${esc(list.nicks.join('\n'))}</textarea></label><label>Vagas<input name="vagas" type="number" min="0" step="1" value="${Number(list.vagas) || 0}" required></label><button class="nca-button nca-button--primary" type="submit">Salvar no Firebase</button></form>`;
+    }).join('')}</div>`;
+    else content = `${tab === 'historico' ? `<section class="nca-management-block"><label>Selecionar backup anterior<select id="nca-backup-select"><option value="">Selecione uma data</option>${(S.managementBackups || []).map(item => `<option value="${esc(item.id)}" ${item.id === S.managementBackup ? 'selected' : ''}>${esc(item.data_formatada || item.timestamp || item.id)}</option>`).join('')}</select></label><button id="nca-load-backups" class="nca-button">Carregar histórico</button></section>` : `<section class="nca-management-block nca-management-tools"><div><h3>Relatórios e Exportação</h3><p>Copie o relatório para WhatsApp ou baixe os votos em CSV.</p></div><button id="nca-copy-report" class="nca-button">Copiar Relatório</button><button id="nca-export-votes" class="nca-button">Exportar Planilha</button></section>`}<section class="nca-management-tools"><label>Visualizar detalhes<select id="nca-management-cargo">${rankOptions}</select></label><button data-copy-verdict="Mantém" class="nca-button">Copiar Mantidos</button><button data-copy-verdict="Pendente" class="nca-button">Copiar Pendentes</button></section>${managementParticipation(rows)}${managementCards(rows)}${tab === 'resultados' ? '<section class="nca-management-danger"><h3>Encerrar Ciclo de Avaliações</h3><p>Cria um backup das listas e votos atuais e esvazia a base ativa para um novo ciclo.</p><button id="nca-archive-promotions" class="nca-button">Gerar Backup e Zerar Sistema</button></section>' : ''}`;
+    shell(`<section class="nca-management"><header class="nca-management-heading"><div><h2><i class="fa-solid fa-database"></i> Painel de Gerenciamento</h2><p>Controle de Listas, Resultados e Backups</p></div><nav>${[['listas', 'Inserir Listas'], ['resultados', 'Ver Resultados'], ['historico', 'Histórico']].map(([id, label]) => `<button data-management-tab="${id}" class="nca-button ${tab === id ? 'nca-button--primary' : ''}">${label}</button>`).join('')}</nav></header><div class="nca-management-tools"><button id="nca-management-notice" class="nca-button nca-button--gold">Enviar aviso de promoções ao Conselho</button><button id="nca-management-refresh" class="nca-button">Atualizar dados</button></div>${content}</section>`, 'Gestão de <em>promoções.</em>', 'Controle de listas, resultados e backups da Companhia.');
+    root.querySelector('.nca-hero').hidden = true;
+    root.querySelectorAll('[data-management-tab]').forEach(button => button.onclick = () => { S.managementTab = button.dataset.managementTab; renderLeadership(); });
+    document.getElementById('nca-management-notice').onclick = showPromotionAnnouncement;
+    document.getElementById('nca-management-refresh').onclick = async () => { try { await load(); renderLeadership(); } catch (error) { toast(error.message, true); } };
+    document.getElementById('nca-management-cargo')?.addEventListener('change', event => { S.leadershipCargo = event.target.value; renderLeadership(); });
+    root.querySelectorAll('[data-copy-nick]').forEach(button => button.onclick = () => managementCopy(button.dataset.copyNick));
+    root.querySelectorAll('[data-copy-verdict]').forEach(button => button.onclick = () => managementCopy(rows.filter(row => row.verdict === button.dataset.copyVerdict).map(row => row.nick).join('\n') || 'Nenhum membro.'));
+    root.querySelectorAll('[data-management-list]').forEach(form => form.onsubmit = async event => {
+      event.preventDefault(); const rank = form.dataset.managementList;
+      const nicks = [...new Map(form.elements.nicks.value.split(/\r?\n/).map(nick => clean(nick)).filter(Boolean).map(nick => [norm(nick), nick])).values()];
+      const vagas = Number(form.elements.vagas.value); if (!Number.isSafeInteger(vagas) || vagas < 0) return;
+      try { const db = await leadershipDatabase(); await db.collection('listas_promocao').doc(rank).set({ nicks, vagas, atualizadoEm: serverTime() }, { merge: true }); await load(); renderLeadership(); toast('Lista salva.'); }
+      catch (error) { toast(error.message, true); }
+    });
+    document.getElementById('nca-copy-report')?.addEventListener('click', () => managementCopy('*Promovidos da semana #PROF - ' + new Date().toLocaleDateString('pt-BR') + '*\n\n' + PROMOTION_RANKS.map(rank => '*' + cargoLabel(rank) + '*\n' + (managementResults(rank).filter(row => row.verdict === 'Promovido').map(row => row.nick).join('\n') || 'Nenhum promovido.')).join('\n\n')));
+    document.getElementById('nca-export-votes')?.addEventListener('click', () => {
+      const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"';
+      const csv = '\uFEFF' + [['Avaliador', 'Membro Avaliado', 'Status', 'Comentário', 'Data'], ...rows.flatMap(row => row.votes.map(vote => [vote.avaliador, row.nick, vote.veredito, vote.dissertacao, docTime(vote.atualizadoEm || vote.timestamp)?.toLocaleString('pt-BR') || '']))].map(row => row.map(cell).join(';')).join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = 'avaliacoes-' + cargo + '.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    document.getElementById('nca-load-backups')?.addEventListener('click', async () => { try { const db = await leadershipDatabase(); const snapshot = await db.collection('historico_promocoes').orderBy('timestamp', 'desc').get(); S.managementBackups = snapshot.docs.map(dataOf); renderLeadership(); } catch (error) { toast(error.message, true); } });
+    document.getElementById('nca-backup-select')?.addEventListener('change', event => { S.managementBackup = event.target.value; renderLeadership(); });
+    document.getElementById('nca-archive-promotions')?.addEventListener('click', archiveManagementCycle);
+  }
+
+  async function archiveManagementCycle() {
+    if (S.archiving) return;
+    if (!window.confirm('Criar um backup completo e remover as listas e votos do ciclo atual?')) return;
+    S.archiving = true;
+    try {
+      const db = await leadershipDatabase();
+      const [lists, votes] = await Promise.all([db.collection('listas_promocao').get(), db.collection('avaliacoes_nexus').get()]);
+      if (!lists.size && !votes.size) return toast('O ciclo já está vazio.');
+      if (lists.size + votes.size > 450) throw new Error('Este ciclo excede o limite de encerramento em uma operação. Nenhum dado foi alterado.');
+      const refs = [...lists.docs, ...votes.docs];
+      const history = db.collection('historico_promocoes').doc();
+      await db.runTransaction(async transaction => {
+        const current = await Promise.all(refs.map(doc => transaction.get(doc.ref)));
+        if (current.some(doc => !doc.exists)) throw new Error('O ciclo foi alterado durante o encerramento. Atualize os dados antes de continuar.');
+        const now = new Date();
+        transaction.set(history, { data_formatada: now.toLocaleString('pt-BR'), timestamp: now.toISOString(), listas: current.slice(0, lists.size).map(dataOf), avaliacoes: current.slice(lists.size).map(dataOf), criadoEm: serverTime() });
+        current.forEach(doc => transaction.delete(doc.ref));
+      });
+      await load(); S.managementTab = 'historico'; S.managementBackup = history.id;
+      S.managementBackups = (await db.collection('historico_promocoes').orderBy('timestamp', 'desc').get()).docs.map(dataOf);
+      renderLeadership(); toast('Backup criado e ciclo encerrado.');
+    } catch (error) { toast(error.message || 'Não foi possível encerrar o ciclo.', true); }
+    finally { S.archiving = false; }
   }
 
   function weeklyEvolution(weeks, cargo) {
@@ -1122,6 +1228,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       if (!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
       S.db = firebase.firestore();
       await load();
+      if (location.hash === '#lideranca' && isLeadership()) S.screen = 'leadership';
       try { S.lastReceipt = JSON.parse(localStorage.getItem('NCA_RECEIPT:' + norm(S.nick)) || 'null'); } catch (_) {}
       render();
       recoverLocalDrafts().then(() => { if (!document.getElementById('nca-evaluation-form')) render(); });
