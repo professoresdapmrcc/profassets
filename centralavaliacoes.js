@@ -538,15 +538,15 @@
     const popup = window.open('https://nexusprof.netlify.app/auth/central-lideranca?nonce=' + encodeURIComponent(nonce), 'nca-leadership-login', 'width=560,height=720');
     if (!popup) throw new Error('Permita a janela de autorização para conectar sua conta de liderança.');
     return new Promise((resolve, reject) => {
-      const finish = () => { clearTimeout(timeout); clearInterval(closed); window.removeEventListener('message', receive); };
+      const finish = () => { clearTimeout(timeout); window.removeEventListener('message', receive); };
       const timeout = setTimeout(() => { finish(); reject(new Error('A autorização expirou. Tente novamente.')); }, 180000);
-      const closed = setInterval(() => { if (popup.closed) { finish(); reject(new Error('A janela de autorização foi fechada.')); } }, 1000);
       const receive = async event => {
         if (event.origin !== 'https://nexusprof.netlify.app' || event.source !== popup || event.data?.type !== 'nca-leadership-session' || event.data?.nonce !== nonce) return;
         finish();
         try {
           await confirmForumUser();
           if (norm(event.data.nickname) !== norm(S.nick)) throw new Error('Autorize a mesma conta que está conectada no fórum.');
+          if (typeof event.data.customToken !== 'string' || !event.data.customToken) throw new Error('O Nexus não devolveu a autorização. Abra a janela novamente.');
           await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
           await auth.signInWithCustomToken(event.data.customToken);
           resolve(app.firestore());
