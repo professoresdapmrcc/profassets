@@ -526,38 +526,8 @@
 
   async function leadershipDatabase() {
     if (!isLeadership()) throw new Error('Acesso exclusivo da liderança.');
-    const app = firebase.apps.find(app => app.name === 'nca-leadership') || firebase.initializeApp(FIREBASE_CONFIG, 'nca-leadership');
-    const auth = app.auth();
-    if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      await confirmForumUser();
-      const profile = await app.firestore().collection('users').doc(auth.currentUser.uid).get();
-      if (profile.exists && norm(nickOf(profile.data())) === norm(S.nick) && plain(profile.data().status) === 'ativo' && ['lider', 'vice-lider'].includes(plain(profile.data().cargo))) return app.firestore();
-      await auth.signOut();
-    }
-    const nonce = crypto.randomUUID();
-    const popup = window.open('https://nexusprof.netlify.app/auth/central-lideranca?nonce=' + encodeURIComponent(nonce), 'nca-leadership-login', 'width=560,height=720');
-    if (!popup) throw new Error('Permita a janela de autorização para conectar sua conta de liderança.');
-    return new Promise((resolve, reject) => {
-      let readyTimer;
-      const finish = () => { clearTimeout(timeout); clearInterval(readyTimer); window.removeEventListener('message', receive); };
-      const timeout = setTimeout(() => { finish(); reject(new Error('A autorização expirou. Tente novamente.')); }, 180000);
-      const sendReady = () => { try { popup.postMessage({ type: 'nca-leadership-ready', nonce }, 'https://nexusprof.netlify.app'); } catch (_) {} };
-      const receive = async event => {
-        if (event.origin !== 'https://nexusprof.netlify.app' || event.source !== popup || event.data?.type !== 'nca-leadership-session' || event.data?.nonce !== nonce) return;
-        finish();
-        try {
-          await confirmForumUser();
-          if (norm(event.data.nickname) !== norm(S.nick)) throw new Error('Autorize a mesma conta que está conectada no fórum.');
-          if (typeof event.data.customToken !== 'string' || !event.data.customToken) throw new Error('O Nexus não devolveu a autorização. Abra a janela novamente.');
-          await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-          await auth.signInWithCustomToken(event.data.customToken);
-          resolve(app.firestore());
-        } catch (error) { reject(error); }
-      };
-      window.addEventListener('message', receive);
-      sendReady();
-      readyTimer = setInterval(sendReady, 250);
-    });
+    if (!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
+    return firebase.firestore();
   }
 
   function managementCards(rows) {
