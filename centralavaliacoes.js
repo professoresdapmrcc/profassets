@@ -10,6 +10,7 @@
     appId: '1:268861178598:web:9686b81bb003f9514fb127',
   };
   const THEME_KEY = 'NEXUS_CENTRAL_AVALIACOES_THEME';
+  const TRANSPARENCY_PROPOSALS_URL = 'https://us-central1-nexusprof.cloudfunctions.net/getTransparenciaPropostas';
   const CONSULTA_SHEETS = {
     professor: { sheetId: '1EQ2_6q0lrA4XIQQhaeJNmp9esYItkN6GKlIou9TkEZo', metrics: ['CRO', 'CAC', 'CAP', 'ACL'] },
     coordenador: { sheetId: '1n3mMltgY0AmDCeO1vRDaYuz-jLaZ--4hO5f9UnTdtEw', metrics: ['Carta de auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA'] },
@@ -846,19 +847,25 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     }).join('') + '</div>';
   }
 
+  let transparencyProposalsPromise;
   async function approvedProposalsAfterEntry(profile) {
     const entry = latestEntryDate(profile);
-    if (!entry || !profile?.id || !S.db) return { count: null, available: false };
+    if (!entry) return { count: null, available: false };
     try {
-      const snapshot = await S.db.collection('users').doc(profile.id).collection('historico')
-        .where(firebase.firestore.FieldPath.documentId(), '>=', 'proposta_')
-        .where(firebase.firestore.FieldPath.documentId(), '<=', 'proposta_\uf8ff').get();
-      const count = snapshot.docs.map(dataOf).filter(record => {
-        const date = docTime(firstValue(record.timestamp, record.criadoEm, record.atualizadoEm, record.data));
-        return date && dayKey(date) >= dayKey(entry);
+      transparencyProposalsPromise ||= fetch(TRANSPARENCY_PROPOSALS_URL, { cache: 'no-store' })
+        .then(response => response.ok ? response.json() : Promise.reject(new Error('A Transparência não respondeu.')))
+        .then(payload => Array.isArray(payload?.backups) ? payload.backups : Promise.reject(new Error('A Transparência não retornou os backups.')));
+      const backups = await transparencyProposalsPromise;
+      const proposals = backups.flatMap(backup => Array.isArray(backup?.data?.propostas) ? backup.data.propostas : []);
+      const count = proposals.filter(proposal => {
+        const authors = clean(proposal.autor ?? proposal.Autor).split('/').map(norm).filter(Boolean);
+        const approved = plain(proposal.resultadoChave).includes('approved') || plain(proposal.resultadoFinal).includes('aprov');
+        const date = docTime(firstValue(proposal.resolvidaEmIso, proposal.resolvidaEm, proposal.data, proposal.criadoEm));
+        return approved && authors.includes(norm(nickOf(profile))) && date && dayKey(date) >= dayKey(entry);
       }).length;
       return { count, available: true };
     } catch (error) {
+      transparencyProposalsPromise = null;
       console.warn('Propostas aprovadas indisponíveis:', error);
       return { count: null, available: false };
     }
