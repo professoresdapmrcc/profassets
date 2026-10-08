@@ -15,6 +15,13 @@
     coordenador: { sheetId: '1n3mMltgY0AmDCeO1vRDaYuz-jLaZ--4hO5f9UnTdtEw', metrics: ['Carta de auxílio', 'Acompanhamentos', 'Orientações', 'COP', 'CDA'] },
     graduador: { sheetId: '1-jR5kLgKHPJuRsXl3PBnz3sbi4mkDeRiQ9rWmmp8uAk', metrics: ['Grad. I', 'Grad. II'] },
   };
+  // Ranking atual: fonte complementar usada durante a avaliação. O histórico
+  // continua vindo das abas mensais acima; este dado é o retrato do período aberto.
+  const CURRENT_RANKING_SHEETS = {
+    professor: { sheetId: '1L5t72kbIlRnHRp_OaOMbHdDjkOy_3QlGJdYqarhh-ac', gid: '1528066399', kind: 'percent', positiveAt: 100 },
+    coordenador: { sheetId: '1EzyhvK4zEI_940ATXnaNQ8KUCxr-2Xj0qRY1MS6extI', gid: '1528066399', kind: 'percent', positiveAt: 100 },
+    graduador: { sheetId: '154ToDPq8wakIM9W0LIiM_TExwAjunT696pqq0xmP2I8', gid: '969911820', kind: 'graduations', positiveAt: 2 },
+  };
   const CONSULTA_MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const PROMOTION_RANKS = ['professor', 'coordenador', 'graduador'];
   const PROPOSAL_VERDICTS = [
@@ -239,6 +246,59 @@
     if (value || row.length) { row.push(value.trim()); if (row.some(Boolean)) rows.push(row); }
     return rows;
   };
+  function currentRankingRecord(csv, config, nick) {
+    const rows = parseCsv(csv);
+    const headerIndex = rows.findIndex(row => row.some(cell => plain(cell) === 'nick') || row.some(cell => plain(cell).includes('ranking nick')));
+    if (headerIndex < 0) throw new Error('A aba de ranking não possui a coluna de membros.');
+    const header = rows[headerIndex];
+    let nickIndex = header.findIndex(cell => plain(cell) === 'nick');
+    if (nickIndex < 0) {
+      const rankingIndex = header.findIndex(cell => plain(cell).includes('ranking nick'));
+      nickIndex = rankingIndex >= 0 ? rankingIndex + 1 : -1;
+    }
+    if (nickIndex < 0) throw new Error('A coluna de nickname do ranking não foi identificada.');
+    const candidates = rows.slice(headerIndex + 1).filter(values => values.some(cell => norm(cell) === norm(nick)));
+    const row = candidates.find(values => norm(values[nickIndex]) === norm(nick))
+      || candidates.find(values => config.kind === 'graduations'
+        ? values.some(cell => sheetNumber(cell) !== null)
+        : values.some(cell => /-?\d+(?:[,.]\d+)?\s*%/.test(String(cell))));
+    if (!row) return null;
+
+    if (config.kind === 'graduations') {
+      const totalIndex = header.findIndex(cell => plain(cell) === 'total');
+      const total = sheetNumber(row[totalIndex]);
+      if (total === null) return null;
+      return { value: total, positive: total >= config.positiveAt, label: total === 1 ? '1 graduação' : `${numberLabel(total)} graduações` };
+    }
+
+    const percentCell = row.slice(nickIndex + 1).find(cell => /-?\d+(?:[,.]\d+)?\s*%/.test(String(cell)));
+    const value = sheetNumber(percentCell);
+    if (value === null) return null;
+    return { value, positive: value >= config.positiveAt, label: percentLabel(percentCell) };
+  }
+  async function loadCurrentRanking(cargo, nick) {
+    const config = CURRENT_RANKING_SHEETS[cargo];
+    if (!config) return { available: false, error: 'Ranking não configurado.' };
+    const cacheKey = `ranking:${config.sheetId}:${config.gid}`;
+    const cached = sheetCache.get(cacheKey);
+    const promise = cached && Date.now() - cached.time < 60000 ? cached.promise : (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      try {
+        const url = `https://docs.google.com/spreadsheets/d/${config.sheetId}/gviz/tq?tqx=out:csv&gid=${config.gid}`;
+        const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Ranking indisponível.');
+        return await response.text();
+      } finally { clearTimeout(timeout); }
+    })();
+    if (!cached || cached.promise !== promise) sheetCache.set(cacheKey, { time: Date.now(), promise });
+    try {
+      const record = currentRankingRecord(await promise, config, nick);
+      return record ? { available: true, ...record, sourceUrl: `https://docs.google.com/spreadsheets/d/${config.sheetId}/edit?gid=${config.gid}` } : { available: false, error: 'Membro não consta no ranking atual.', sourceUrl: `https://docs.google.com/spreadsheets/d/${config.sheetId}/edit?gid=${config.gid}` };
+    } catch (error) {
+      return { available: false, error: error?.message || 'Ranking indisponível.', sourceUrl: `https://docs.google.com/spreadsheets/d/${config.sheetId}/edit?gid=${config.gid}` };
+    }
+  }
   const consultaWeeks = (csv, config, nick) => {
     const rows = parseCsv(csv); const header = rows[0] || [];
     const starts = header.map((cell, index) => ({ cell, index })).filter(({ cell, index }) => /nick/i.test(cell) && plain(header[index + 1] || '') === plain(config.metrics[0]));
@@ -771,7 +831,11 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       sourceUrl: config ? 'https://docs.google.com/spreadsheets/d/' + config.sheetId + '/edit' : 'https://nexusprof.netlify.app/consulta',
       semanas: [], historicoMetas: [], failedMonths: [], consultedAt: new Date().toISOString(),
     };
-    if (!entry || !config) { result.manualReview = true; return result; }
+    if (!entry || !config) {
+      result.manualReview = true;
+      result.metaAtual = await loadCurrentRanking(cargo, item.nick);
+      return result;
+    }
     const months = performanceMonthNames(entry);
     const records = [];
     let cursor = 0;
@@ -785,6 +849,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     result.semanas = filterCareerWeeks(records, entry);
     result.historicoMetas = result.semanas;
     Object.assign(result, summarizeWeeks(result.semanas, cargo));
+    result.metaAtual = await loadCurrentRanking(cargo, item.nick);
     S.performance.set(cacheKey, result);
     return result;
   }
@@ -824,11 +889,14 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     const bestResultLabel = isGraduator ? numberLabel(bestResult) : percentLabel(bestResult);
     const bestResultTitle = isGraduator ? 'Maior nº de graduações' : 'Maior porcentagem';
     const bestWeekTitle = isGraduator ? 'Melhor semana' : 'Semana da maior %';
-    const goal = performance.porcentagemTotal ?? performance.meta ?? profile.meta ?? 'Não disponível';
     const goalLabel = recentMetaLabel(performance, profile);
+    const currentGoal = performance.metaAtual;
+    const currentGoalLabel = currentGoal?.available
+      ? `${currentGoal.label} · ${currentGoal.positive ? 'Positiva' : 'Abaixo da meta'}`
+      : currentGoal?.error || 'Sem registro';
     const lessons = performance.aulasAplicadas ?? performance.atividades ?? profile.aulasAplicadas ?? 'Não disponível';
     const timeBase = item.cargo === 'professor' ? entryDate : lastCareerDate;
-    return `<section class="nca-editor"><div class="nca-editor-scroll"><header class="nca-editor-head"><div class="nca-member-heading"><img src="${avatar(item.nick, false)}" alt=""><div><p class="nca-kicker">Candidato a promoção</p><h2>${esc(item.nick)}</h2><p>${cargoLabel(item.cargo)} · ${item.vagas} vaga${item.vagas === 1 ? '' : 's'} no próximo cargo</p></div></div><span class="nca-status-pill ${sent(vote) ? 'is-sent' : ''}">${sent(vote) ? 'Parecer enviado' : draft.veredito || draft.dissertacao ? 'Rascunho' : 'Pendente'}</span></header><section class="nca-section"><div class="nca-section-title"><h3>Ficha do membro</h3><button id="nca-compare-toggle" class="nca-button nca-button--ghost"><i class="fa-solid fa-scale-balanced"></i>${selected ? 'Remover da comparação' : 'Adicionar ao comparador'}</button></div><div class="nca-info-grid"><div class="nca-info"><span>Cargo atual</span><strong>${esc(profile.cargo || cargoLabel(item.cargo))}</strong></div><div class="nca-info"><span>Data de entrada</span><strong>${dateLabel(entryDate)}</strong></div><div class="nca-info"><span>Última promoção/rebaixamento</span><strong>${lastCareerDate ? dateLabel(lastCareerDate) : '-'}</strong></div><div class="nca-info"><span>Tempo no cargo</span><strong>${timeBase ? daysSince(timeBase) : '-'}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(approvedProposals)}</strong></div><div class="nca-info"><span>Licenças</span><strong>${esc(licenseSummary(item.nick))}</strong></div><div class="nca-info"><span>Meta recente</span><strong>${esc(goalLabel)}</strong></div><div class="nca-info"><span>Aulas aplicadas</span><strong>${esc(lessons)}</strong></div><div class="nca-info"><span>${bestResultTitle}</span><strong>${esc(bestResultLabel)}</strong></div><div class="nca-info"><span>${bestWeekTitle}</span><strong>${esc(bestWeekLabel(performance))}</strong></div><div class="nca-info"><span>Vagas</span><strong>${item.vagas}</strong></div></div></section><section class="nca-section"><div class="nca-section-title"><h3>Votos do Conselho</h3><button id="nca-open-comments" class="nca-button nca-button--ghost"><i class="fa-solid fa-comments"></i>Ver ${votes.length} parecer${votes.length === 1 ? '' : 'es'}</button></div><div class="nca-votes"><div class="nca-vote-total"><strong>${promote}</strong><span>Votaram para promover</span></div><div class="nca-vote-total"><strong>${keep}</strong><span>Votaram para manter</span></div></div></section><form id="nca-evaluation-form"><section class="nca-section"><div class="nca-section-title"><h3>Seu veredito</h3></div><div class="nca-verdicts">${[['Promovido', 'Promover', 'fa-arrow-up'], ['Mantém', 'Manter', 'fa-minus']].map(([value, label, icon]) => `<label class="nca-choice"><input type="radio" name="veredito" value="${value}" ${verdict === value ? 'checked' : ''}><span><i class="fa-solid ${icon}"></i>${label}</span></label>`).join('')}</div></section><section class="nca-section"><label class="nca-field-label" for="nca-comment">Justificativa obrigatória <small><span id="nca-count">${comment.length}</span>/5000</small></label><textarea id="nca-comment" class="nca-textarea" maxlength="5000" placeholder="Explique os fatos que fundamentam seu parecer.">${esc(comment)}</textarea></section><footer class="nca-editor-actions"><span id="nca-save-label" class="nca-save-state"><i class="fa-solid fa-cloud"></i>${draft.veredito || draft.dissertacao ? 'Rascunho recuperado. Envie para contabilizar.' : 'O preenchimento será salvo automaticamente.'}</span><button class="nca-button nca-button--gold" type="submit" ${cycleOpen() ? '' : 'disabled'}><i class="fa-solid fa-paper-plane"></i>${sent(vote) ? 'Atualizar avaliação' : 'Enviar avaliação'}</button></footer></form></div></section>`;
+    return `<section class="nca-editor"><div class="nca-editor-scroll"><header class="nca-editor-head"><div class="nca-member-heading"><img src="${avatar(item.nick, false)}" alt=""><div><p class="nca-kicker">Candidato a promoção</p><h2>${esc(item.nick)}</h2><p>${cargoLabel(item.cargo)} · ${item.vagas} vaga${item.vagas === 1 ? '' : 's'} no próximo cargo</p></div></div><span class="nca-status-pill ${sent(vote) ? 'is-sent' : ''}">${sent(vote) ? 'Parecer enviado' : draft.veredito || draft.dissertacao ? 'Rascunho' : 'Pendente'}</span></header><section class="nca-section"><div class="nca-section-title"><h3>Ficha do membro</h3><button id="nca-compare-toggle" class="nca-button nca-button--ghost"><i class="fa-solid fa-scale-balanced"></i>${selected ? 'Remover da comparação' : 'Adicionar ao comparador'}</button></div><div class="nca-info-grid"><div class="nca-info"><span>Cargo atual</span><strong>${esc(profile.cargo || cargoLabel(item.cargo))}</strong></div><div class="nca-info"><span>Data de entrada</span><strong>${dateLabel(entryDate)}</strong></div><div class="nca-info"><span>Última promoção/rebaixamento</span><strong>${lastCareerDate ? dateLabel(lastCareerDate) : '-'}</strong></div><div class="nca-info"><span>Tempo no cargo</span><strong>${timeBase ? daysSince(timeBase) : '-'}</strong></div><div class="nca-info"><span>Propostas aprovadas</span><strong>${numberLabel(approvedProposals)}</strong></div><div class="nca-info"><span>Licenças</span><strong>${esc(licenseSummary(item.nick))}</strong></div><div class="nca-info"><span>Meta atual</span><strong class="${currentGoal?.available ? (currentGoal.positive ? 'nca-goal-positive' : 'nca-goal-negative') : ''}">${esc(currentGoalLabel)}</strong></div><div class="nca-info"><span>Meta recente</span><strong>${esc(goalLabel)}</strong></div><div class="nca-info"><span>Aulas aplicadas</span><strong>${esc(lessons)}</strong></div><div class="nca-info"><span>${bestResultTitle}</span><strong>${esc(bestResultLabel)}</strong></div><div class="nca-info"><span>${bestWeekTitle}</span><strong>${esc(bestWeekLabel(performance))}</strong></div><div class="nca-info"><span>Vagas</span><strong>${item.vagas}</strong></div></div></section><section class="nca-section"><div class="nca-section-title"><h3>Votos do Conselho</h3><button id="nca-open-comments" class="nca-button nca-button--ghost"><i class="fa-solid fa-comments"></i>Ver ${votes.length} parecer${votes.length === 1 ? '' : 'es'}</button></div><div class="nca-votes"><div class="nca-vote-total"><strong>${promote}</strong><span>Votaram para promover</span></div><div class="nca-vote-total"><strong>${keep}</strong><span>Votaram para manter</span></div></div></section><form id="nca-evaluation-form"><section class="nca-section"><div class="nca-section-title"><h3>Seu veredito</h3></div><div class="nca-verdicts">${[['Promovido', 'Promover', 'fa-arrow-up'], ['Mantém', 'Manter', 'fa-minus']].map(([value, label, icon]) => `<label class="nca-choice"><input type="radio" name="veredito" value="${value}" ${verdict === value ? 'checked' : ''}><span><i class="fa-solid ${icon}"></i>${label}</span></label>`).join('')}</div></section><section class="nca-section"><label class="nca-field-label" for="nca-comment">Justificativa obrigatória <small><span id="nca-count">${comment.length}</span>/5000</small></label><textarea id="nca-comment" class="nca-textarea" maxlength="5000" placeholder="Explique os fatos que fundamentam seu parecer.">${esc(comment)}</textarea></section><footer class="nca-editor-actions"><span id="nca-save-label" class="nca-save-state"><i class="fa-solid fa-cloud"></i>${draft.veredito || draft.dissertacao ? 'Rascunho recuperado. Envie para contabilizar.' : 'O preenchimento será salvo automaticamente.'}</span><button class="nca-button nca-button--gold" type="submit" ${cycleOpen() ? '' : 'disabled'}><i class="fa-solid fa-paper-plane"></i>${sent(vote) ? 'Atualizar avaliação' : 'Enviar avaliação'}</button></footer></form></div></section>`;
   }
 
   function bindPromotion(items, item, performance) {
@@ -916,7 +984,10 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     const weekControls = '<label class="nca-week-select">Semana da comparação<select id="nca-compare-week">' + weeks.map(week => '<option ' + (week === S.compareWeek ? 'selected' : '') + ' value="' + esc(week) + '">' + esc(week) + '</option>').join('') + '</select></label>';
     const cards = await Promise.all(S.compare.map(async item => {
       const profile = memberProfile(item); const performance = await loadPerformance(item); const selectedWeek = performanceWeeks(performance, profile).find(week => String(week.data || week.dataFim || week.fim || '') === S.compareWeek); const votes = promotionVotesFor(item);
-      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(item.cargo === 'professor' ? firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada) : careerDate(profile, 'promov') || careerDate(profile, 'rebaix'))}</dd></div><div><dt>Meta na semana selecionada</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek ? performance.cargo === 'graduador' ? numberLabel(selectedWeek.metaValue) : percentLabel(selectedWeek.porcentagem) : 'Sem registro'}</dd></div><div><dt>Aulas aplicadas</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek?.aulasAplicadas != null ? numberLabel(selectedWeek.aulasAplicadas) : 'Sem registro'}</dd></div><div><dt>Licença</dt><dd>${esc(licenseSummary(item.nick))}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
+      const currentGoal = performance.metaAtual;
+      const currentGoalLabel = currentGoal?.available ? `${currentGoal.label} · ${currentGoal.positive ? 'Positiva' : 'Abaixo da meta'}` : currentGoal?.error || 'Sem registro';
+      const currentGoalClass = currentGoal?.available ? (currentGoal.positive ? 'nca-goal-positive' : 'nca-goal-negative') : '';
+      return `<article class="nca-compare-card"><header><img src="${avatar(item.nick)}" alt=""><div><h3>${esc(item.nick)}</h3><small>${esc(profile.cargo || cargoLabel(item.cargo))}</small></div></header><dl><div><dt>Tempo no cargo</dt><dd>${daysSince(item.cargo === 'professor' ? firstValue(profile.dataEntrada, profile.data_entrada, profile.entrada) : careerDate(profile, 'promov') || careerDate(profile, 'rebaix'))}</dd></div><div><dt>Meta atual</dt><dd class="${currentGoalClass}">${esc(currentGoalLabel)}</dd></div><div><dt>Meta na semana selecionada</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek ? performance.cargo === 'graduador' ? numberLabel(selectedWeek.metaValue) : percentLabel(selectedWeek.porcentagem) : 'Sem registro'}</dd></div><div><dt>Aulas aplicadas</dt><dd>${performance.manualReview ? 'Veja manualmente' : selectedWeek?.aulasAplicadas != null ? numberLabel(selectedWeek.aulasAplicadas) : 'Sem registro'}</dd></div><div><dt>Licença</dt><dd>${esc(licenseSummary(item.nick))}</dd></div><div><dt>Promover</dt><dd>${votes.filter(v => plain(v.veredito).includes('promov')).length}</dd></div><div><dt>Manter</dt><dd>${votes.filter(v => plain(v.veredito).includes('mant')).length}</dd></div></dl><button class="nca-button nca-button--ghost" data-comments="${esc(item.nick)}" data-cargo="${item.cargo}"><i class="fa-solid fa-comments"></i>Ver pareceres</button></article>`;
     }));
     shell(`<div class="nca-compare-bar"><button id="nca-back-promotions" class="nca-button"><i class="fa-solid fa-arrow-left"></i>Voltar às promoções</button><span class="nca-save-state">${S.compare.length} de 3 membros selecionados</span></div><div class="nca-compare-controls">${[0, 1, 2].map(slot => `<label>Membro ${slot + 1}<select data-compare-slot="${slot}"><option value="">Selecione um membro</option>${S.promotions.map((candidate, index) => `<option value="${index}" ${S.compare[slot] === candidate ? 'selected' : ''}>${esc(candidate.nick)} · ${cargoLabel(candidate.cargo)}</option>`).join('')}</select></label>`).join('')}</div>${weekControls}<section class="nca-compare-grid">${cards.join('')}</section>`, 'Comparador de <em>membros.</em>', 'Compare desempenho, situação e votação dos candidatos selecionados.');
     document.getElementById('nca-compare-week').onchange = event => { S.compareWeek = event.target.value; render(); };
@@ -1231,7 +1302,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { responseLabel, leadershipData, weeklyEvolution, answered, historyOf, canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports = { responseLabel, leadershipData, weeklyEvolution, answered, historyOf, canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, currentRankingRecord, loadCurrentRanking, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, CURRENT_RANKING_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();

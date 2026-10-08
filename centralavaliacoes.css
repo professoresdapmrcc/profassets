@@ -245,6 +245,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-compare-card dl div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .nca-compare-card dt { color: var(--muted); }
 .nca-compare-card dd { margin: 0; text-align: right; font-weight: 700; }
+.nca-goal-positive { color: #3edc80; }
+.nca-goal-negative { color: #ffb34d; }
 .nca-empty, .nca-state { display: grid; place-items: center; min-height: 420px; padding: 34px; text-align: center; }
 .nca-state-card { width: min(560px, 100%); padding: 32px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
 .nca-state-card i { color: var(--gold); font-size: 32px; }
