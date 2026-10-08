@@ -322,6 +322,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nca-performance-block { margin-top: 26px; }
 .nca-performance-block > p { margin: 10px 0; }
 .nca-performance-block .nca-section-title { margin-bottom: 12px; }
+.nca-license-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.nca-license-card, .nca-license-empty, .nca-proposal-count { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface-2) 84%, var(--page)); }
+.nca-license-card { border-left: 3px solid var(--gold); }
+.nca-license-empty { border-style: dashed; color: var(--muted); }
+.nca-license-card > i, .nca-license-empty > i, .nca-proposal-count > i { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
+.nca-license-card strong, .nca-license-empty strong, .nca-proposal-count strong { display: block; color: var(--text); font-size: 13px; }
+.nca-license-card span, .nca-license-empty span, .nca-proposal-count span, .nca-proposal-count small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.nca-proposal-count { margin-top: 12px; border-left: 3px solid var(--purple-soft); }
+.nca-proposal-count > i { color: var(--purple-soft); background: color-mix(in srgb, var(--purple) 18%, transparent); }
+.nca-late-notice, .nca-deadline-notice { margin: 18px 0 -10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; }
+.nca-late-notice { border-color: color-mix(in srgb, var(--gold) 68%, var(--line)); color: var(--gold-soft); background: color-mix(in srgb, var(--gold) 9%, var(--surface)); }
+.nca-late-notice i, .nca-deadline-notice i { margin-right: 7px; color: var(--gold); }
+.nca-late-vote { display: inline-block; margin-left: 7px; padding: 3px 6px; border-radius: 999px; background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold-soft); font-size: 10px; font-weight: 700; }
 .nca-recent-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .nca-recent-goal { padding: 16px 18px; border-left: 3px solid var(--gold); background: var(--surface-2); border-radius: 0 10px 10px 0; }
 .nca-recent-goal span { display: block; font-size: 13px; color: var(--muted); }
@@ -348,3 +361,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .nca-performance-table th, .nca-performance-table td { padding: 12px 10px; }
 }
 @media (max-width: 420px) { .nca-performance-summary, .nca-recent-goals { grid-template-columns: 1fr; } }
+
+.nca-editor-actions > .nca-button--ghost { margin-left: auto; }
+.nca-deadline-management { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(180px, .7fr) minmax(180px, .7fr) auto; align-items: end; gap: 14px; }
+.nca-deadline-management h3 { margin-bottom: 5px; }
+.nca-deadline-management p { margin: 0; font-size: 12px; }
+.nca-deadline-management label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.nca-deadline-management input { width: 100%; min-height: 42px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--field); color: var(--text); font: inherit; }
+@media (max-width: 1000px) { .nca-deadline-management { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nca-deadline-management > div { grid-column: 1 / -1; } }

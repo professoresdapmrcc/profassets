@@ -235,7 +235,8 @@
     const metrics = CONSULTA_SHEETS[cargo]?.metrics || [];
     const rows = weeks.map(week => '<tr><th scope="row"><strong>' + esc(weekPeriod(week)) + '</strong><small>' + weekDates(week).end.getUTCFullYear() + '</small></th><td class="nca-meta-value">' + esc(goalLabel(week)) + '</td>' + metrics.map((_, index) => '<td>' + valueLabel(week.metrics?.[index]) + '</td>').join('') + '<td><span class="nca-performance-status">' + esc(week.status || 'Sem classificação') + '</span>' + (week.motivo ? '<small>' + esc(week.motivo) + '</small>' : '') + '</td></tr>').join('');
     const recent = weeks.filter(week => week.metaValue != null).slice(0, 2).map(week => '<div class="nca-recent-goal"><span>' + esc(weekPeriod(week)) + '</span><strong>' + esc(goalLabel(week)) + '</strong></div>').join('');
-    return '<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-intro"><div><h4>Desempenho de ' + esc(cargoLabel(cargo)) + '</h4><p>Desde ' + dateLabel(performance.entryDate) + ', incluindo o período da entrada.</p></div>' + manualLink + '</div><div class="nca-performance-summary"><div class="nca-info"><span>Meta atual</span><strong class="' + (currentGoal?.available ? (currentGoal.positive ? 'nca-goal-positive' : 'nca-goal-negative') : '') + '">' + esc(currentGoalLabel) + '</strong><small>Ranking do período em aberto</small></div><div class="nca-info"><span>' + (cargo === 'graduador' ? 'Graduações' : 'Aulas aplicadas') + '</span><strong>' + valueLabel(performance.aulasCargoAtual) + '</strong><small>Nos períodos encontrados</small></div><div class="nca-info"><span>Maior resultado</span><strong>' + (cargo === 'graduador' ? valueLabel(performance.melhorSemanaAulas) : performance.maiorPorcentagem === undefined ? '—' : percentLabel(performance.maiorPorcentagem)) + '</strong><small>' + esc(performance.melhorSemanaLabel || 'Sem registro') + '</small></div><div class="nca-info"><span>Períodos registrados</span><strong>' + weeks.length + '</strong><small>Após a última entrada</small></div></div><section class="nca-performance-block"><h4>' + (cargo === 'graduador' ? 'Últimos dois resultados' : 'Últimas duas metas') + '</h4><div class="nca-recent-goals">' + (recent || '<p>Sem resultados disponíveis.</p>') + '</div></section><section class="nca-performance-block"><div class="nca-section-title"><h4>Histórico por período</h4><span class="nca-save-state">' + weeks.length + ' períodos</span></div>' + (performance.failedMonths?.length ? '<p class="nca-performance-warning" role="status">Dados indisponíveis em ' + esc(performance.failedMonths.join(', ')) + '. A aba não foi acessada ou retornou datas de outro mês. Confira a planilha original.</p>' : '') + (rows ? '<div class="nca-performance-table-wrap" tabindex="0" role="region" aria-label="Metas e atividades por período"><table class="nca-performance-table"><caption>Metas e atividades desde a última entrada</caption><thead><tr><th scope="col">Período</th><th scope="col">' + (cargo === 'graduador' ? 'Total' : 'Meta') + '</th>' + metrics.map(label => '<th scope="col">' + esc(label) + '</th>').join('') + '<th scope="col">Classificação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="nca-locked">Nenhum desempenho encontrado neste período. Veja manualmente na planilha original.</div>') + '</section><section class="nca-performance-block"><div class="nca-section-title"><h4>Licenças após a entrada</h4><span class="nca-save-state">' + licenseHistory(item.nick).length + ' registros</span></div><p>' + esc(licenseSummary(item.nick)) + '</p><p class="nca-save-state">Propostas aprovadas: ' + numberLabel(profile.propostas ?? profile.propostasAprovadas ?? profile.propostasAprovadasSubgrupos ?? 0) + '</p></section><details class="nca-performance-source"><summary>Fonte e atualização dos dados</summary><p>' + esc(performance.sourceLabel) + ' · Consulta em ' + esc(new Date(performance.consultedAt).toLocaleString('pt-BR')) + '.</p><p>Totais dos períodos disponíveis. Históricos arquivados em outras planilhas precisam de consulta manual. — indica ausência de registro.</p></details></section>';
+    const approvedLabel = performance.propostasAprovadas?.available ? numberLabel(performance.propostasAprovadas.count) : 'Veja manualmente';
+    return '<section id="nca-member-performance" class="nca-performance-panel" hidden><div class="nca-performance-intro"><div><h4>Desempenho de ' + esc(cargoLabel(cargo)) + '</h4><p>Desde ' + dateLabel(performance.entryDate) + ', incluindo o período da entrada.</p></div>' + manualLink + '</div><div class="nca-performance-summary"><div class="nca-info"><span>Meta atual</span><strong class="' + (currentGoal?.available ? (currentGoal.positive ? 'nca-goal-positive' : 'nca-goal-negative') : '') + '">' + esc(currentGoalLabel) + '</strong><small>Ranking do período em aberto</small></div><div class="nca-info"><span>Maior resultado</span><strong>' + (cargo === 'graduador' ? valueLabel(performance.melhorSemanaAulas) : performance.maiorPorcentagem === undefined ? '—' : percentLabel(performance.maiorPorcentagem)) + '</strong><small>' + esc(performance.melhorSemanaLabel || 'Sem registro') + '</small></div><div class="nca-info"><span>Períodos registrados</span><strong>' + weeks.length + '</strong><small>Após a última entrada</small></div></div><section class="nca-performance-block"><h4>' + (cargo === 'graduador' ? 'Últimos dois resultados' : 'Últimas duas metas') + '</h4><div class="nca-recent-goals">' + (recent || '<p>Sem resultados disponíveis.</p>') + '</div></section><section class="nca-performance-block"><div class="nca-section-title"><h4>Histórico por período</h4><span class="nca-save-state">' + weeks.length + ' períodos</span></div>' + (performance.failedMonths?.length ? '<p class="nca-performance-warning" role="status">Dados indisponíveis em ' + esc(performance.failedMonths.join(', ')) + '. A aba não foi acessada ou retornou datas de outro mês. Confira a planilha original.</p>' : '') + (rows ? '<div class="nca-performance-table-wrap" tabindex="0" role="region" aria-label="Metas e atividades por período"><table class="nca-performance-table"><caption>Metas e atividades desde a última entrada</caption><thead><tr><th scope="col">Período</th><th scope="col">' + (cargo === 'graduador' ? 'Total' : 'Meta') + '</th>' + metrics.map(label => '<th scope="col">' + esc(label) + '</th>').join('') + '<th scope="col">Classificação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="nca-locked">Nenhum desempenho encontrado neste período. Veja manualmente na planilha original.</div>') + '</section><section class="nca-performance-block"><div class="nca-section-title"><h4>Licenças após a entrada</h4><span class="nca-save-state">' + licenseHistory(item.nick).length + ' registros</span></div>' + licenseCards(item.nick) + '<div class="nca-proposal-count"><i class="fa-solid fa-file-circle-check"></i><div><span>Propostas aprovadas</span><strong>' + esc(approvedLabel) + '</strong><small>Registradas na Transparência após a entrada.</small></div></div></section><details class="nca-performance-source"><summary>Fonte e atualização dos dados</summary><p>' + esc(performance.sourceLabel) + ' · Consulta em ' + esc(new Date(performance.consultedAt).toLocaleString('pt-BR')) + '.</p><p>Totais dos períodos disponíveis. Históricos arquivados em outras planilhas precisam de consulta manual. — indica ausência de registro.</p></details></section>';
   };
   const parseCsv = csv => {
     const rows = []; let row = []; let value = ''; let quoted = false;
@@ -328,8 +329,25 @@
     if (!S.cycle) return true;
     if (S.cycle.status && !['open', 'aberto', 'ativo'].includes(plain(S.cycle.status))) return false;
     const start = docTime(S.cycle.start || S.cycle.inicio);
-    const end = docTime(S.cycle.end || S.cycle.fim);
-    return (!start || Date.now() >= start.getTime()) && (!end || Date.now() <= end.getTime());
+    return !start || Date.now() >= start.getTime();
+  };
+  const deadlineFor = kind => docTime(kind === 'proposal'
+    ? firstValue(S.cycle?.prazoPropostas, S.cycle?.prazo_propostas, S.cycle?.proposalsDeadline)
+    : firstValue(S.cycle?.prazoPromocoes, S.cycle?.prazo_promocoes, S.cycle?.end, S.cycle?.fim));
+  const deadlinePassed = kind => {
+    const deadline = deadlineFor(kind);
+    return Boolean(deadline && Date.now() > deadline.getTime());
+  };
+  const submittedAfterDeadline = (vote, kind) => {
+    const deadline = deadlineFor(kind);
+    const submittedAt = docTime(vote?.finalizadoEm || vote?.atualizadoEm || vote?.timestamp || vote?.Timestamp);
+    return Boolean(deadline && submittedAt && submittedAt.getTime() > deadline.getTime());
+  };
+  const deadlineNotice = kind => {
+    const deadline = deadlineFor(kind);
+    if (!deadline) return '';
+    if (deadlinePassed(kind)) return '<p class="nca-late-notice" role="status"><i class="fa-solid fa-clock"></i>Sua resposta será salva, mas a Liderança será comunicada que você enviou após o prazo.</p>';
+    return '<p class="nca-deadline-notice"><i class="fa-solid fa-clock"></i>Prazo: ' + esc(deadline.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })) + ' (Brasília).</p>';
   };
   const ownPromotionVote = item => S.promotionVotes.find(v => norm(v.avaliador) === norm(S.nick) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo);
   const promotionVotesFor = item => S.promotionVotes.filter(v => sent(v) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo);
@@ -389,7 +407,7 @@
     } finally { S.recovering = false; }
   }
   function deadlineText() {
-    const end = docTime(S.cycle?.end || S.cycle?.fim);
+    const end = deadlineFor('promotion');
     if (!end) return 'Prazo de promoções não informado.';
     const remaining = end.getTime() - Date.now();
     const hours = Math.max(0, Math.ceil(remaining / 3600000));
@@ -594,8 +612,19 @@
     return firebase.firestore();
   }
 
+  function dateTimeInputValue(value) {
+    const date = docTime(value);
+    if (!date) return '';
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function deadlineManagement() {
+    return `<form id="nca-deadline-form" class="nca-management-block nca-deadline-management"><div><h3>Prazos de resposta</h3><p>Após o prazo, a resposta ainda é salva e fica sinalizada para a Liderança.</p></div><label>Promoções<input name="promotions" type="datetime-local" value="${dateTimeInputValue(deadlineFor('promotion'))}"></label><label>Propostas<input name="proposals" type="datetime-local" value="${dateTimeInputValue(deadlineFor('proposal'))}"></label><button class="nca-button nca-button--primary" type="submit">Salvar prazos</button></form>`;
+  }
+
   function managementCards(rows) {
-    return `<div class="nca-management-stats">${[['Total', rows.length], ['Promovidos', rows.filter(r => r.verdict === 'Promovido').length], ['Mantidos', rows.filter(r => r.verdict === 'Mantém').length], ['Pendentes / empates', rows.filter(r => ['Pendente', 'Empate'].includes(r.verdict)).length]].map(([label, value]) => `<div class="nca-info"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div><div class="nca-management-grid">${rows.map(row => `<article class="nca-management-card" data-verdict="${esc(row.verdict)}"><header><img src="${avatar(row.nick)}" alt=""><div><h3>${esc(row.nick)}</h3><small>${row.promotes} promove · ${row.keeps} mantém</small></div><span class="nca-status-pill">${esc(row.verdict)}</span></header><div class="nca-management-comments">${row.votes.map(vote => `<article><strong>${esc(vote.avaliador)} · ${esc(vote.veredito)}</strong><p>${esc(vote.dissertacao || 'Sem justificativa.')}</p></article>`).join('') || '<p>Aguardando avaliações.</p>'}</div><button class="nca-button nca-button--ghost" data-copy-nick="${esc(row.nick)}">Copiar nick</button></article>`).join('') || '<p>Nenhum membro neste cargo.</p>'}</div>`;
+    return `<div class="nca-management-stats">${[['Total', rows.length], ['Promovidos', rows.filter(r => r.verdict === 'Promovido').length], ['Mantidos', rows.filter(r => r.verdict === 'Mantém').length], ['Pendentes / empates', rows.filter(r => ['Pendente', 'Empate'].includes(r.verdict)).length]].map(([label, value]) => `<div class="nca-info"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div><div class="nca-management-grid">${rows.map(row => `<article class="nca-management-card" data-verdict="${esc(row.verdict)}"><header><img src="${avatar(row.nick)}" alt=""><div><h3>${esc(row.nick)}</h3><small>${row.promotes} promove · ${row.keeps} mantém</small></div><span class="nca-status-pill">${esc(row.verdict)}</span></header><div class="nca-management-comments">${row.votes.map(vote => `<article><strong>${esc(vote.avaliador)} · ${esc(vote.veredito)}</strong>${submittedAfterDeadline(vote, 'promotion') ? '<span class="nca-late-vote">Enviado após o prazo</span>' : ''}<p>${esc(vote.dissertacao || 'Sem justificativa.')}</p></article>`).join('') || '<p>Aguardando avaliações.</p>'}</div><button class="nca-button nca-button--ghost" data-copy-nick="${esc(row.nick)}">Copiar nick</button></article>`).join('') || '<p>Nenhum membro neste cargo.</p>'}</div>`;
   }
 
   function managementParticipation(rows) {
@@ -630,11 +659,25 @@
       return `<form data-management-list="${rank}" class="nca-management-card nca-announcement"><h3>${cargoLabel(rank)}</h3><label>Um nick por linha<textarea name="nicks" rows="10">${esc(list.nicks.join('\n'))}</textarea></label><label>Vagas<input name="vagas" type="number" min="0" step="1" value="${Number(list.vagas) || 0}" required></label><button class="nca-button nca-button--primary" type="submit">Salvar no Firebase</button></form>`;
     }).join('')}</div>`;
     else content = `${tab === 'historico' ? `<section class="nca-management-block"><label>Selecionar backup anterior<select id="nca-backup-select"><option value="">Selecione uma data</option>${(S.managementBackups || []).map(item => `<option value="${esc(item.id)}" ${item.id === S.managementBackup ? 'selected' : ''}>${esc(item.data_formatada || item.timestamp || item.id)}</option>`).join('')}</select></label><button id="nca-load-backups" class="nca-button">Carregar histórico</button></section>` : `<section class="nca-management-block nca-management-tools"><div><h3>Relatórios e Exportação</h3><p>Copie o relatório para WhatsApp ou baixe os votos em CSV.</p></div><button id="nca-copy-report" class="nca-button">Copiar Relatório</button><button id="nca-export-votes" class="nca-button">Exportar Planilha</button></section>`}<section class="nca-management-tools"><label>Visualizar detalhes<select id="nca-management-cargo">${rankOptions}</select></label><button data-copy-verdict="Mantém" class="nca-button">Copiar Mantidos</button><button data-copy-verdict="Pendente" class="nca-button">Copiar Pendentes</button></section>${managementParticipation(rows)}${managementCards(rows)}${tab === 'resultados' ? '<section class="nca-management-danger"><h3>Encerrar Ciclo de Avaliações</h3><p>Cria um backup das listas e votos atuais e esvazia a base ativa para um novo ciclo.</p><button id="nca-archive-promotions" class="nca-button">Gerar Backup e Zerar Sistema</button></section>' : ''}`;
-    shell(`<section class="nca-management"><header class="nca-management-heading"><div><h2><i class="fa-solid fa-database"></i> Painel de Gerenciamento</h2><p>Controle de Listas, Resultados e Backups</p></div><nav>${[['listas', 'Inserir Listas'], ['resultados', 'Ver Resultados'], ['historico', 'Histórico']].map(([id, label]) => `<button data-management-tab="${id}" class="nca-button ${tab === id ? 'nca-button--primary' : ''}">${label}</button>`).join('')}</nav></header><div class="nca-management-tools"><button id="nca-management-notice" class="nca-button nca-button--gold">Enviar aviso de promoções ao Conselho</button><button id="nca-management-refresh" class="nca-button">Atualizar dados</button></div>${content}</section>`, 'Gestão de <em>promoções.</em>', 'Controle de listas, resultados e backups da Companhia.');
+    shell(`<section class="nca-management"><header class="nca-management-heading"><div><h2><i class="fa-solid fa-database"></i> Painel de Gerenciamento</h2><p>Controle de Listas, Resultados e Backups</p></div><nav>${[['listas', 'Inserir Listas'], ['resultados', 'Ver Resultados'], ['historico', 'Histórico']].map(([id, label]) => `<button data-management-tab="${id}" class="nca-button ${tab === id ? 'nca-button--primary' : ''}">${label}</button>`).join('')}</nav></header><div class="nca-management-tools"><button id="nca-management-notice" class="nca-button nca-button--gold">Enviar aviso de promoções ao Conselho</button><button id="nca-management-refresh" class="nca-button">Atualizar dados</button></div>${deadlineManagement()}${content}</section>`, 'Gestão de <em>promoções.</em>', 'Controle de listas, resultados e backups da Companhia.');
     root.querySelector('.nca-hero').hidden = true;
     root.querySelectorAll('[data-management-tab]').forEach(button => button.onclick = () => { S.managementTab = button.dataset.managementTab; renderLeadership(); });
     document.getElementById('nca-management-notice').onclick = showPromotionAnnouncement;
     document.getElementById('nca-management-refresh').onclick = async () => { try { await load(); renderLeadership(); } catch (error) { toast(error.message, true); } };
+    document.getElementById('nca-deadline-form').onsubmit = async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const value = field => form.elements[field].value ? new Date(form.elements[field].value).toISOString() : null;
+      try {
+        const db = await leadershipDatabase();
+        const payload = { atualizadoEm: serverTime(), atualizadoPor: S.nick };
+        const promotions = value('promotions'); const proposals = value('proposals');
+        payload.prazoPromocoes = promotions || firebase.firestore.FieldValue.delete();
+        payload.prazoPropostas = proposals || firebase.firestore.FieldValue.delete();
+        await db.collection('nexus_config').doc('avaliacoes').collection('configuracoes').doc('ciclo').set(payload, { merge: true });
+        await load(); renderLeadership(); toast('Prazos salvos.');
+      } catch (error) { toast(error.message || 'Não foi possível salvar os prazos.', true); }
+    };
     document.getElementById('nca-management-cargo')?.addEventListener('change', event => { S.leadershipCargo = event.target.value; renderLeadership(); });
     root.querySelectorAll('[data-copy-nick]').forEach(button => button.onclick = () => managementCopy(button.dataset.copyNick));
     root.querySelectorAll('[data-copy-verdict]').forEach(button => button.onclick = () => managementCopy(rows.filter(row => row.verdict === button.dataset.copyVerdict).map(row => row.nick).join('\n') || 'Nenhum membro.'));
@@ -792,6 +835,35 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     }).join(' | ');
   }
 
+  function licenseCards(nick) {
+    const history = licenseHistory(nick);
+    if (!history.length) return '<div class="nca-license-empty"><i class="fa-solid fa-calendar-check"></i><div><strong>Nenhuma licença no período</strong><span>Não há licença registrada após a última entrada.</span></div></div>';
+    return '<div class="nca-license-list">' + history.map(item => {
+      const type = clean(firstValue(item.tipo_licenca, item.tipoLicenca, item.tipo, item.motivo, item.status_licenca), 'Licença');
+      const start = firstValue(item.data_inicio, item.dataInicio, item.data_iso, item.data);
+      const end = firstValue(item.data_fim, item.dataFim, item.data_termino, item.dataTermino);
+      return '<article class="nca-license-card"><i class="fa-solid fa-calendar-minus"></i><div><strong>' + esc(type) + '</strong><span>' + esc(dateLabel(start) + (end ? ' até ' + dateLabel(end) : '')) + '</span></div></article>';
+    }).join('') + '</div>';
+  }
+
+  async function approvedProposalsAfterEntry(profile) {
+    const entry = latestEntryDate(profile);
+    if (!entry || !profile?.id || !S.db) return { count: null, available: false };
+    try {
+      const snapshot = await S.db.collection('users').doc(profile.id).collection('historico')
+        .where(firebase.firestore.FieldPath.documentId(), '>=', 'proposta_')
+        .where(firebase.firestore.FieldPath.documentId(), '<=', 'proposta_\uf8ff').get();
+      const count = snapshot.docs.map(dataOf).filter(record => {
+        const date = docTime(firstValue(record.timestamp, record.criadoEm, record.atualizadoEm, record.data));
+        return date && dayKey(date) >= dayKey(entry);
+      }).length;
+      return { count, available: true };
+    } catch (error) {
+      console.warn('Propostas aprovadas indisponíveis:', error);
+      return { count: null, available: false };
+    }
+  }
+
   const sheetCache = new Map();
   function validateSheetMonth(csv, month) {
     const header = parseCsv(csv)[0] || [];
@@ -837,7 +909,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     };
     if (!entry || !config) {
       result.manualReview = true;
-      result.metaAtual = await loadCurrentRanking(cargo, item.nick);
+      [result.metaAtual, result.propostasAprovadas] = await Promise.all([loadCurrentRanking(cargo, item.nick), approvedProposalsAfterEntry(profile)]);
       return result;
     }
     const months = performanceMonthNames(entry);
@@ -853,7 +925,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     result.semanas = filterCareerWeeks(records, entry);
     result.historicoMetas = result.semanas;
     Object.assign(result, summarizeWeeks(result.semanas, cargo));
-    result.metaAtual = await loadCurrentRanking(cargo, item.nick);
+    [result.metaAtual, result.propostasAprovadas] = await Promise.all([loadCurrentRanking(cargo, item.nick), approvedProposalsAfterEntry(profile)]);
     S.performance.set(cacheKey, result);
     return result;
   }
@@ -885,7 +957,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     const selected = S.compare.some(candidate => norm(candidate.nick) === norm(item.nick) && candidate.cargo === item.cargo);
     const lastCareerDate = careerDate(profile, 'promov') || careerDate(profile, 'rebaix');
     const entryDate = latestEntryDate(profile);
-    const approvedProposals = firstValue(profile.propostas, profile.propostasAprovadas, profile.propostasAprovadasSubgrupos, 0);
+    const approvedProposals = performance.propostasAprovadas?.available ? performance.propostasAprovadas.count : undefined;
     const isGraduator = item.cargo === 'graduador' || normalizeCargo(profile.cargo) === 'graduador';
     const bestResult = isGraduator
       ? firstValue(performance.melhorSemanaAulas, performance.maiorQuantidadeGraduacoes, performance.maiorQuantidadeGraduacao, performance.maiorQuantidade, performance.aulasAplicadas)
@@ -946,6 +1018,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       });
     }
     const form = document.getElementById('nca-evaluation-form');
+    form.querySelector('.nca-editor-actions')?.insertAdjacentHTML('beforebegin', deadlineNotice('promotion'));
     form.addEventListener('input', () => {
       document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length;
       scheduleDraft('promotion', item);
@@ -1033,6 +1106,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     const form = document.getElementById('nca-evaluation-form');
     bindHistory(ownProposalVote(item));
     bindRecovery('proposal', item);
+    form.querySelector('.nca-editor-actions')?.insertAdjacentHTML('beforebegin', deadlineNotice('proposal'));
     form.addEventListener('input', () => { document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length; scheduleDraft('proposal', item); });
     form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
     form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
@@ -1084,20 +1158,34 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     label?.setAttribute('role', 'status');
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'nca-button nca-button--ghost';
-    button.textContent = 'Tentar salvar novamente';
+    button.textContent = 'Salvar rascunho';
     button.onclick = async () => {
       button.disabled = true;
       await S.saveQueue;
       storeLocalDraft(kind, item, formDraft());
-      await recoverLocalDrafts();
+      await saveDraft(kind, item, formDraft());
       button.disabled = false;
       updateResponseState(kind, item);
     };
     label?.after(button);
+    const download = document.createElement('button');
+    download.type = 'button'; download.className = 'nca-button nca-button--ghost';
+    download.innerHTML = '<i class="fa-solid fa-file-arrow-down"></i>Baixar respostas (.txt)';
+    download.onclick = () => downloadResponseText(kind, item);
+    button.after(download);
     const vote = effectiveVote(kind, item);
     if (readLocalDrafts()[draftId(kind, item)]) setSaveLabel('Cópia recuperada neste navegador. Aguardando sincronização.', 'fa-laptop');
     else if (vote.rascunho?.atualizadoEm) setSaveLabel('Rascunho salvo em ' + new Date(vote.rascunho.atualizadoEm).toLocaleString('pt-BR') + '. Aguardando envio.');
     else if (sent(vote)) setSaveLabel('Avaliação enviada e contabilizada.', 'fa-circle-check');
+  }
+
+  function downloadResponseText(kind, item) {
+    const draft = formDraft();
+    const title = kind === 'promotion' ? 'Avaliação de promoção — ' + item.nick : 'Avaliação de proposta — ' + item.ordem + ' — ' + item.titulo;
+    const body = ['NEXUS — CENTRAL DE AVALIAÇÕES', title, 'Avaliador: ' + S.nick, 'Exportado em: ' + new Date().toLocaleString('pt-BR'), '', 'Veredito: ' + (draft.veredito || 'Não preenchido'), '', 'Justificativa:', draft.comentario || 'Não preenchida.'].join('\r\n');
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'resposta-' + key(kind === 'promotion' ? item.nick : item.ordem + '-' + item.titulo) + '.txt'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function saveDraft(kind, item, draft = formDraft()) {
@@ -1169,7 +1257,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       const payload = { avaliador: S.nick, avaliadorCargo: S.profile.cargo, nick_avaliado: item.nick, cargo: item.cargo, ciclo_id: S.cycle?.id || '', veredito: draft.veredito, dissertacao: draft.comentario, status: 'enviado', timestamp: serverTime(), finalizadoEm: current.finalizadoEm || serverTime(), atualizadoEm: serverTime(), rascunho: firebase.firestore.FieldValue.delete(), historico: historyOf(current, ['veredito', 'dissertacao']) };
       await ref.set(payload, { merge: true });
       upsert(S.promotionVotes, id, { ...payload, finalizadoEm: current.finalizadoEm || new Date().toISOString(), timestamp: new Date().toISOString(), atualizadoEm: new Date().toISOString(), rascunho: null });
-      toast('Avaliação enviada e contabilizada.'); render();
+      toast(deadlinePassed('promotion') ? 'Avaliação salva. A Liderança foi comunicada do envio após o prazo.' : 'Avaliação enviada e contabilizada.'); render();
     } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar a avaliação.', true); }
     finally { S.busy = false; }
   }
@@ -1189,7 +1277,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       const payload = { Nick: S.nick, Ordem: item.ordem, Veredito: draft.veredito, Comentario: draft.comentario, status: 'enviado', Timestamp: serverTime(), finalizadoEm: current.finalizadoEm || serverTime(), atualizadoEm: serverTime(), rascunho: firebase.firestore.FieldValue.delete(), historico: historyOf(current, ['Veredito', 'Comentario']) };
       await ref.set(payload, { merge: true });
       upsert(S.proposalVotes, id, { ...payload, finalizadoEm: current.finalizadoEm || new Date().toISOString(), Timestamp: new Date().toISOString(), atualizadoEm: new Date().toISOString(), rascunho: null });
-      toast('Parecer enviado. Os resultados foram liberados.'); render();
+      toast(deadlinePassed('proposal') ? 'Parecer salvo. A Liderança foi comunicada do envio após o prazo.' : 'Parecer enviado. Os resultados foram liberados.'); render();
     } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar o parecer.', true); }
     finally { S.busy = false; }
   }
@@ -1256,7 +1344,9 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       S.lastReceipt = receipt;
       try { localStorage.setItem('NCA_RECEIPT:' + norm(S.nick), JSON.stringify(receipt)); } catch (_) {}
       drafts.forEach(({ kind, item }) => { const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); if (current) { const savedDraft = current.rascunho || {}; current.historico = historyOf(current, kind === 'promotion' ? ['veredito', 'dissertacao'] : ['Veredito', 'Comentario']); current.atualizadoEm = new Date().toISOString(); current.status = 'enviado'; if (kind === 'promotion') { current.veredito = savedDraft.veredito; current.dissertacao = savedDraft.dissertacao; } else { current.Veredito = savedDraft.veredito; current.Comentario = savedDraft.comentario; } current.rascunho = null; } });
+      const late = drafts.some(({ kind }) => deadlinePassed(kind));
       S.screen = 'home'; render(); showReceipt(receipt);
+      if (late) toast('As respostas foram salvas. A Liderança foi comunicada dos envios após o prazo.');
     } catch (error) { console.error(error); toast(error.message || 'Não foi possível enviar as avaliações.', true); }
     finally { S.busy = false; }
   }
