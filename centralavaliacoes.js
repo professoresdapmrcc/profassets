@@ -364,8 +364,9 @@
     return local ? { ...vote, rascunho: local.draft } : vote;
   }
   function responseLabel(vote) {
+    if (sent(vote)) return 'Avaliação enviada';
     if (vote?.rascunho) return answered(vote) ? 'Respondida — aguardando envio' : 'Resposta incompleta';
-    return sent(vote) ? 'Avaliação enviada' : answered(vote) ? 'Respondida — aguardando envio' : 'Pendente';
+    return answered(vote) ? 'Respondida — aguardando envio' : 'Pendente';
   }
   function updateResponseState(kind, item) {
     const vote = effectiveVote(kind, item);
@@ -1350,6 +1351,9 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       await batch.commit();
       S.lastReceipt = receipt;
       try { localStorage.setItem('NCA_RECEIPT:' + norm(S.nick), JSON.stringify(receipt)); } catch (_) {}
+      const localDrafts = readLocalDrafts();
+      drafts.forEach(({ kind, item }) => { delete localDrafts[draftId(kind, item)]; });
+      try { localStorage.setItem(localDraftKey(), JSON.stringify(localDrafts)); } catch (_) {}
       drafts.forEach(({ kind, item }) => { const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item); if (current) { const savedDraft = current.rascunho || {}; current.historico = historyOf(current, kind === 'promotion' ? ['veredito', 'dissertacao'] : ['Veredito', 'Comentario']); current.atualizadoEm = new Date().toISOString(); current.status = 'enviado'; if (kind === 'promotion') { current.veredito = savedDraft.veredito; current.dissertacao = savedDraft.dissertacao; } else { current.Veredito = savedDraft.veredito; current.Comentario = savedDraft.comentario; } current.rascunho = null; } });
       const late = drafts.some(({ kind }) => deadlinePassed(kind));
       S.screen = 'home'; render(); showReceipt(receipt);
