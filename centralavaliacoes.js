@@ -351,7 +351,12 @@
     return '<p class="nca-deadline-notice"><i class="fa-solid fa-clock"></i>Prazo: ' + esc(deadline.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })) + ' (Brasília).</p>';
   };
   const ownPromotionVote = item => S.promotionVotes.find(v => norm(v.avaliador) === norm(S.nick) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo);
-  const promotionVotesFor = item => S.promotionVotes.filter(v => sent(v) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo);
+  const promotionVotesFor = item => {
+    const matching = S.promotionVotes
+      .filter(v => sent(v) && norm(v.nick_avaliado) === norm(item.nick) && normalizeCargo(v.cargo) === item.cargo)
+      .sort((a, b) => (docTime(b.atualizadoEm || b.timestamp)?.getTime() || 0) - (docTime(a.atualizadoEm || a.timestamp)?.getTime() || 0));
+    return [...new Map(matching.map(vote => [norm(vote.avaliador), vote])).values()];
+  };
   const ownProposalVote = item => S.proposalVotes.find(v => norm(v.Nick ?? v.nick) === norm(S.nick) && Number(v.Ordem ?? v.ordem) === item.ordem);
   const proposalVotesFor = item => S.proposalVotes.filter(v => sent(v) && Number(v.Ordem ?? v.ordem) === item.ordem);
 
@@ -361,7 +366,7 @@
   function effectiveVote(kind, item) {
     const vote = (kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item)) || {};
     const local = readLocalDrafts()[draftId(kind, item)];
-    return local ? { ...vote, rascunho: local.draft } : vote;
+    return sent(vote) ? vote : local ? { ...vote, rascunho: local.draft } : vote;
   }
   function responseLabel(vote) {
     if (sent(vote)) return 'Avaliação enviada';
@@ -535,8 +540,8 @@
     return Boolean(String(value.veredito ?? value.Veredito ?? '').trim() && String(value.dissertacao ?? value.comentario ?? value.Comentario ?? '').trim());
   };
   const completeDrafts = () => [
-    ...S.promotions.filter(item => { const vote = ownPromotionVote(item); return vote?.rascunho && answered(vote); }).map(item => ({ kind: 'promotion', item })),
-    ...S.proposals.filter(item => { const vote = ownProposalVote(item); return vote?.rascunho && answered(vote); }).map(item => ({ kind: 'proposal', item })),
+    ...S.promotions.filter(item => { const vote = ownPromotionVote(item); return !sent(vote) && vote?.rascunho && answered(vote); }).map(item => ({ kind: 'promotion', item })),
+    ...S.proposals.filter(item => { const vote = ownProposalVote(item); return !sent(vote) && vote?.rascunho && answered(vote); }).map(item => ({ kind: 'proposal', item })),
   ];
 
   function shell(content, title = 'Central de <em>Avaliações.</em>', description = 'Analise propostas e candidatos sem sair do Forumeiros.') {
@@ -1027,12 +1032,13 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     }
     const form = document.getElementById('nca-evaluation-form');
     form.querySelector('.nca-editor-actions')?.insertAdjacentHTML('beforebegin', deadlineNotice('promotion'));
+    if (sent(ownPromotionVote(item))) form.querySelectorAll('input, textarea, button[type="submit"]').forEach(field => { field.disabled = true; });
     form.addEventListener('input', () => {
       document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length;
       scheduleDraft('promotion', item);
     });
-    form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
-    form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
+    form.onsubmit = async event => { event.preventDefault(); await saveDraft('promotion', item); };
+    form.querySelector('[type=submit]').textContent = 'Salvar rascunho';
   }
 
   async function renderPromotions() {
@@ -1115,9 +1121,10 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     bindHistory(ownProposalVote(item));
     bindRecovery('proposal', item);
     form.querySelector('.nca-editor-actions')?.insertAdjacentHTML('beforebegin', deadlineNotice('proposal'));
+    if (sent(ownProposalVote(item))) form.querySelectorAll('input, textarea, button[type="submit"]').forEach(field => { field.disabled = true; });
     form.addEventListener('input', () => { document.getElementById('nca-count').textContent = document.getElementById('nca-comment').value.length; scheduleDraft('proposal', item); });
-    form.onsubmit = event => { event.preventDefault(); submitAllDrafts(); };
-    form.querySelector('[type=submit]').textContent = 'Enviar preenchidos';
+    form.onsubmit = async event => { event.preventDefault(); await saveDraft('proposal', item); };
+    form.querySelector('[type=submit]').textContent = 'Salvar rascunho';
   }
 
   function formDraft() {
@@ -1164,6 +1171,11 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     updateResponseState(kind, item);
     const label = document.getElementById('nca-save-label');
     label?.setAttribute('role', 'status');
+    const existingVote = effectiveVote(kind, item);
+    if (sent(existingVote)) {
+      setSaveLabel('Avaliação enviada e contabilizada.', 'fa-circle-check');
+      return;
+    }
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'nca-button nca-button--ghost';
     button.textContent = 'Salvar rascunho';
@@ -1181,7 +1193,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     download.innerHTML = '<i class="fa-solid fa-file-arrow-down"></i>Baixar respostas (.txt)';
     download.onclick = () => downloadResponseText(kind, item);
     button.after(download);
-    const vote = effectiveVote(kind, item);
+    const vote = existingVote;
     if (readLocalDrafts()[draftId(kind, item)]) setSaveLabel('Cópia recuperada neste navegador. Aguardando sincronização.', 'fa-laptop');
     else if (vote.rascunho?.atualizadoEm) setSaveLabel('Rascunho salvo em ' + new Date(vote.rascunho.atualizadoEm).toLocaleString('pt-BR') + '. Aguardando envio.');
     else if (sent(vote)) setSaveLabel('Avaliação enviada e contabilizada.', 'fa-circle-check');
@@ -1200,6 +1212,11 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     try {
       if (!cycleOpen()) throw new Error('Prazo encerrado. A cópia local foi preservada.');
       if (!navigator.onLine) throw new Error('Sem conexão. Rascunho guardado neste navegador.');
+      const alreadySent = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item);
+      if (sent(alreadySent)) {
+        setSaveLabel('Avaliação enviada e contabilizada.', 'fa-circle-check');
+        return;
+      }
       if (kind === 'promotion') {
         const ref = S.db.collection('avaliacoes_nexus').doc(`${item.cargo}_${item.nick}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`);
         const existing = ownPromotionVote(item);
