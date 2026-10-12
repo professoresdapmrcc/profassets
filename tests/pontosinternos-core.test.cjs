@@ -1,0 +1,5 @@
+const test=require('node:test');const assert=require('node:assert/strict');const app=require('../pontosinternos.js');
+test('preserva grafia e agrupa por categoria e rótulo',()=>{const [g]=app.groupSelected([{nick:',Majesty',category:'C',label:'META CUMPRIDA (PROFESSOR)',selected:true},{nick:'!weniyori?',category:'C',label:'META CUMPRIDA (PROFESSOR)',selected:true}]);assert.equal(g.nicks,',Majesty / !weniyori?');});
+test('empate conserva a primeira ocorrência',()=>assert.deepEqual(app.selectHighlights([{nick:'A',score:10},{nick:'B',score:10}],1).map(x=>x.nick),['A']));
+test('duplicidade exata começa desmarcada',()=>{const [x]=app.markDuplicates([{nick:'Pegas',sourceId:'prof',periodId:'W41',category:'C',label:'META'}],[{candidates:[{nick:'pegas',sourceId:'prof',periodId:'W41',category:'C',label:'META'}]}],[]);assert.equal(x.selected,false);assert.equal(x.duplicate,'exact');});
+test('nicks separados por barra e linha mantêm pontuação',()=>assert.deepEqual(app.splitNicks(',Majesty / !weniyori?\nPegas'),[',Majesty','!weniyori?','Pegas']));

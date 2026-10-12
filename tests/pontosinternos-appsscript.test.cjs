@@ -1,0 +1,3 @@
+const test=require('node:test');const assert=require('node:assert/strict');const app=require('../pontosinternos.js');
+test('mapeia categoria C somente para coluna G',()=>assert.deepEqual(app.toSheetRow({responsible:'Pegas',nicks:'A / B',category:'C',label:'META CUMPRIDA (PROFESSOR)',print:''},'DATA'),['DATA','Pegas','A / B','[C] HIERARQUIA & METAS','','','META CUMPRIDA (PROFESSOR)','','']));
+test('mapeia categoria A somente para coluna E',()=>assert.deepEqual(app.toSheetRow({responsible:'Pegas',nicks:'A',category:'A',label:'PROJETO APROVADO NA OUVIDORIA',print:'https://x.test/a.png'},'DATA'),['DATA','Pegas','A','[A] OUVIDORIA','PROJETO APROVADO NA OUVIDORIA','','','','https://x.test/a.png']));
