@@ -1007,17 +1007,15 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     document.getElementById('nca-compare-toggle').onclick = () => toggleCompare(item);
     document.getElementById('nca-open-comments').onclick = () => showPromotionComments(item);
     const infoSection = root.querySelector('.nca-editor .nca-section');
-    const sectionTitle = infoSection?.querySelector('.nca-section-title');
     const infoGrid = infoSection?.querySelector('.nca-info-grid');
-    if (sectionTitle && infoGrid) {
+    if (infoSection && infoGrid) {
       infoGrid.classList.add('nca-ficha-grid');
-      const heading = sectionTitle.querySelector('h3');
-      const tabs = document.createElement('div');
-      tabs.className = 'nca-member-tabs';
-      tabs.innerHTML = '<button type="button" class="nca-member-tab is-active" data-member-tab="ficha">Ficha do membro</button><button type="button" class="nca-member-tab" data-member-tab="desempenho">Desempenho</button>';
-      heading?.replaceWith(tabs);
-      infoSection.insertAdjacentHTML('beforeend', performancePanel(performance, memberProfile(item), item));
+      const performanceSpoiler = document.createElement('details');
+      performanceSpoiler.className = 'nca-performance-spoiler nca-section';
+      performanceSpoiler.innerHTML = '<summary><span><i class="fa-solid fa-chart-line" aria-hidden="true"></i><strong>Desempenho</strong></span><small>Ver metas, histórico e evolução</small></summary>' + performancePanel(performance, memberProfile(item), item);
+      infoSection.insertAdjacentElement('afterend', performanceSpoiler);
       const performanceNode = document.getElementById('nca-member-performance');
+      performanceNode.hidden = false;
       const evolution = document.createElement('section'); evolution.className = 'nca-performance-block';
       evolution.innerHTML = '<h4>Evolução entre semanas</h4>' + weeklyEvolution(performanceWeeks(performance, memberProfile(item)), item.cargo);
       performanceNode.append(evolution);
@@ -1036,12 +1034,6 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
         finally { refresh.disabled = false; refresh.textContent = 'Atualizar desempenho'; }
       };
       performanceNode.append(refresh);
-      tabs.querySelectorAll('[data-member-tab]').forEach(button => button.onclick = () => {
-        const showPerformance = button.dataset.memberTab === 'desempenho';
-        infoGrid.hidden = showPerformance;
-        document.getElementById('nca-member-performance').hidden = !showPerformance;
-        tabs.querySelectorAll('.nca-member-tab').forEach(tab => tab.classList.toggle('is-active', tab === button));
-      });
     }
     const form = document.getElementById('nca-evaluation-form');
     form.querySelector('.nca-editor-actions')?.insertAdjacentHTML('beforebegin', deadlineNotice('promotion'));

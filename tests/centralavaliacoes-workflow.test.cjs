@@ -1,6 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const app = require('../centralavaliacoes.js');
+
+test('promotion keeps performance on the evaluation page inside a collapsed spoiler', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'centralavaliacoes.js'), 'utf8');
+  assert.match(source, /performanceSpoiler\.className = 'nca-performance-spoiler nca-section'/);
+  assert.match(source, /<strong>Desempenho<\/strong>/);
+  assert.match(source, /infoSection\.insertAdjacentElement\('afterend', performanceSpoiler\)/);
+  assert.doesNotMatch(source, /data-member-tab=/);
+});
 
 test('response labels distinguish complete drafts, incomplete edits and sent votes', () => {
   assert.equal(app.responseLabel({}), 'Pendente');
