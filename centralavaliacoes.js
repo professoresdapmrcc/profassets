@@ -721,20 +721,33 @@
       const [lists, votes] = await Promise.all([db.collection('listas_promocao').get(), db.collection('avaliacoes_nexus').get()]);
       if (!lists.size && !votes.size) return toast('O ciclo já está vazio.');
       if (lists.size + votes.size > 450) throw new Error('Este ciclo excede o limite de encerramento em uma operação. Nenhum dado foi alterado.');
-      const refs = [...lists.docs, ...votes.docs];
-      const history = db.collection('historico_promocoes').doc();
-      await db.runTransaction(async transaction => {
-        const current = await Promise.all(refs.map(doc => transaction.get(doc.ref)));
-        if (current.some(doc => !doc.exists)) throw new Error('O ciclo foi alterado durante o encerramento. Atualize os dados antes de continuar.');
-        const now = new Date();
-        transaction.set(history, { data_formatada: now.toLocaleString('pt-BR'), timestamp: now.toISOString(), listas: current.slice(0, lists.size).map(dataOf), avaliacoes: current.slice(lists.size).map(dataOf), criadoEm: serverTime() });
-        current.forEach(doc => transaction.delete(doc.ref));
-      });
+      const history = await writePromotionBackup(db, lists, votes, firebase.auth().currentUser.uid);
       await load(); S.managementTab = 'historico'; S.managementBackup = history.id;
       S.managementBackups = (await db.collection('historico_promocoes').orderBy('timestamp', 'desc').get()).docs.map(dataOf);
       renderLeadership(); toast('Backup criado e ciclo encerrado.');
     } catch (error) { toast(error.message || 'Não foi possível encerrar o ciclo.', true); }
     finally { S.archiving = false; }
+  }
+
+  async function writePromotionBackup(db, lists, votes, authorUid) {
+    const refs = [...lists.docs, ...votes.docs];
+    const history = db.collection('historico_promocoes').doc();
+    const operation = db.collection('nexus_config').doc('avaliacoes').collection('encerramentos').doc(authorUid);
+    await db.runTransaction(async transaction => {
+      const current = await Promise.all(refs.map(doc => transaction.get(doc.ref)));
+      if (current.some(doc => !doc.exists)) throw new Error('O ciclo foi alterado durante o encerramento. Atualize os dados antes de continuar.');
+      const now = new Date();
+      transaction.set(history, {
+        data_formatada: now.toLocaleString('pt-BR'), timestamp: now.toISOString(),
+        listas: current.slice(0, lists.size).map(dataOf),
+        avaliacoes: current.slice(lists.size).map(dataOf),
+        avaliacoesOriginais: Object.fromEntries(current.slice(lists.size).map(doc => [doc.id, doc.data()])),
+        autorUid: authorUid, criadoEm: serverTime(),
+      });
+      transaction.set(operation, { backupId: history.id, criadoEm: serverTime() });
+      current.forEach(doc => transaction.delete(doc.ref));
+    });
+    return history;
   }
 
   function weeklyEvolution(weeks, cargo) {
@@ -1425,6 +1438,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { responseLabel, leadershipData, weeklyEvolution, answered, historyOf, canReadProposalVotes, hasPromotionCandidates, promotionItems, promotionIndex, licenseHistory, licenseSummary, validateSheetMonth, latestEntryDate, performanceMonthNames, filterCareerWeeks, summarizeWeeks, consultaWeeks, currentRankingRecord, loadCurrentRanking, weekDates, weekPeriod, performancePanel, performanceWeeks, recentMetaLabel, loadPerformance, CONSULTA_SHEETS, CURRENT_RANKING_SHEETS, S, norm, plain, normalizeCargo, allowedRole, sent, key, numberLabel, percentLabel, bestWeekLabel };
+    module.exports.writePromotionBackup = writePromotionBackup;
   } else {
     root = document.getElementById('app') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'app' }));
     init();
