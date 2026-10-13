@@ -111,7 +111,18 @@
   const S={db:null,user:'',profile:null,types:[],sources:[],extras:[],candidates:[],history:[],sheetRows:[],config:{},busy:false};
   const $=id=>document.getElementById(id); const esc=v=>plain(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   function alertUser(message,type=''){const el=$('pi-alert');el.textContent=message;el.className='pi-alert '+type;el.hidden=false;clearTimeout(alertUser.timer);alertUser.timer=setTimeout(()=>el.hidden=true,7000);}
-  async function forumUser(){if(root._userdata&&plain(root._userdata.username)&&root._userdata.username!=='Convidado')return plain(root._userdata.username);try{const html=await fetch('/forum',{credentials:'include'}).then(r=>r.text());const match=html.match(/_userdata\s*=\s*\{[\s\S]*?["']username["']\s*:\s*["']([^"']+)/i)||html.match(/Bem-vindo(?:\(a\))?,?\s*<[^>]+>([^<]+)/i);return match?plain(match[1]):'';}catch{return '';}}
+  async function forumUser(){
+    const fromPage=root._userdata&&root._userdata.username;
+    if(root._userdata&&root._userdata.session_logged_in&&fromPage&&!/^(Anonymous|Convidado|Guest)$/i.test(fromPage))return plain(fromPage);
+    if(!/(^|\.)policiarcc\.com$/i.test(location.hostname))throw new Error('Abra esta página dentro do Forumeiros para identificar sua conta.');
+    const response=await fetch('/forum',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(15000)});
+    if(!response.ok)throw new Error('Não foi possível confirmar sua sessão no fórum.');
+    const html=await response.text();
+    const logged=html.match(/_userdata\s*\[\s*["']session_logged_in["']\s*\]\s*=\s*(\d)/i);
+    const match=html.match(/_userdata\s*\[\s*["']username["']\s*\]\s*=\s*["']([^"']+)["']/i)||html.match(/_userdata\.username\s*=\s*["']([^"']+)["']/i);
+    if(!logged||logged[1]!=='1'||!match||/^(Anonymous|Convidado|Guest)$/i.test(match[1]))throw new Error('Entre na sua conta do fórum para acessar a Central.');
+    const decoder=document.createElement('textarea');decoder.innerHTML=match[1];return plain(decoder.value);
+  }
   function profileNick(user){return plain(user.name||user.nick||user.nickname||user.usuario||user.username||user.nome);}
   async function loadProfile(){S.user=await forumUser();if(!S.user)throw new Error('Entre no fórum antes de abrir a Central.');const snap=await S.db.collection('users').get();const matches=snap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>normalizeNick(profileNick(u))===normalizeNick(S.user));S.profile=matches.find(u=>normalizeText(u.status)==='ativo')||matches[0];if(!S.profile)throw new Error('Seu nickname não está cadastrado no Nexus.');const extras=await S.db.doc(CONFIG_PATH).collection('extra_nicks').get();S.extras=extras.docs.map(d=>({id:d.id,...d.data()}));const role=normalizeText(S.profile.cargo).replace(/-/g,' ');if(!ROLES.some(r=>role.includes(r))&&!S.extras.some(x=>x.active!==false&&normalizeNick(x.nick)===normalizeNick(S.user)))throw new Error(`O cargo ${plain(S.profile.cargo)||'não informado'} não possui acesso a esta Central.`);}
   async function seed(){const rootRef=S.db.doc(CONFIG_PATH),snap=await rootRef.get();if(!snap.exists)await rootRef.set({version:1,createdAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});const batch=S.db.batch();for(const [category,label] of POINT_TYPES){const ref=rootRef.collection('tipos').doc(`${category.toLowerCase()}-${slug(label)}`),current=await ref.get();if(!current.exists)batch.set(ref,{category,label,active:true,usageCount:0,seed:true});}for(const source of SOURCES){const ref=rootRef.collection('fontes').doc(source.id),current=await ref.get();if(!current.exists)batch.set(ref,{...source,active:true,seed:true});}await batch.commit();}
