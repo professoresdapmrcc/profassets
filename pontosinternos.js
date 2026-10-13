@@ -81,7 +81,7 @@
   function addStyle(href,id){if(document.getElementById(id))return;const link=document.createElement('link');link.id=id;link.rel='stylesheet';link.href=href;document.head.appendChild(link);}
   function loadScript(src){return new Promise((resolve,reject)=>{const found=[...document.scripts].find(x=>x.src===src);if(found){if(root.firebase)return resolve();found.addEventListener('load',resolve,{once:true});found.addEventListener('error',reject,{once:true});return;}const script=document.createElement('script');script.src=src;script.onload=resolve;script.onerror=()=>reject(new Error(`Não foi possível carregar ${src}`));document.head.appendChild(script);});}
   function mountShell(){
-    addStyle('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap','pi-fonts');
+    addStyle('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap','pi-fonts');
     addStyle('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css','pi-icons');
     addStyle(`${ASSET_BASE}pontosinternos.css`,'pi-styles');
     let rootNode=document.getElementById('pi-root');if(!rootNode){rootNode=document.createElement('div');rootNode.id='pi-root';document.body.appendChild(rootNode);}
