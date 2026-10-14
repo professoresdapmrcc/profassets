@@ -282,7 +282,7 @@ A aplicação de uma orientação vale [color=#821F88][size=14][b]50%[/b][/size]
 
 Não é permitido aplicar qualquer um dos cursos a um mesmo militar que já o obteve anteriormente em menos de 15 (quinze) dias. [color=#821F88][size=14][b]Por exemplo:[/b][/size][/color] se a coordenadora lyafrosa aplicou o COP ao capitão Abismy no dia 1 de abril, o capitão Abismy só poderá receber o COP novamente no dia 16 de abril, 15 (quinze) dias depois. A planilha de relatórios dos coordenadores possui um filtro que permite realizar esta verificação facilmente.
 
-Cada aplicação de um curso vale [color=#821F88][size=14][b]35%[/b][/size][/color] na meta semanal.[/justify]</div>
+Cada aplicação de um curso vale [color=#821F88][size=14][b]50%[/b][/size][/color] na meta semanal.[/justify]</div>
 [table style="color: rgb(0, 0, 0);border-radius:10px; overflow:hidden; border-color: rgb(0, 0, 0);" bgcolor="#821F88" border="1"][tr][td][size=20][font=Poppins][color=white][b]FORMAS DE SE DESTACAR[/b][/color][/font][/size][/td][/tr][/table]
 <div style="padding:1.5%;border:1px solid #bdbdbd;border-radius:8px;">[justify][b]↝[/b] É claro que, para continuar seu ótimo trabalho, é esperado que você esteja sempre evoluindo em suas responsabilidades. Uma forma de mostrar sua dedicação para além do cumprimento da meta de seu cargo é por meio da utilização da [url=https://www.policiarcc.com/t35734-prof-ouvidoria][color=#821F88][size=14][b]Ouvidoria[/b][/size][/color][/url].
 
