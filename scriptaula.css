@@ -22,10 +22,11 @@
 /* Topbar e Conteúdo */
 .main-column{min-width:0;display:grid;grid-template-rows:78px minmax(0,1fr);height:100vh}
 .topbar{z-index:30;position:relative;display:flex;align-items:center;justify-content:flex-end;padding:0 28px;border-bottom:1px solid var(--border);background:var(--page)}
-.user-chip{display:flex;align-items:center;gap:10px;padding-left:14px;border-left:1px solid var(--border)}
-.user-chip>span{display:flex;flex-direction:column;align-items:flex-end}
-.user-chip strong{font-size:.75rem} .user-chip small{color:var(--muted);font-size:.58rem}
-.user-chip img{width:42px;height:42px;object-fit:cover;border-radius:13px;}
+
+/* Usuário Logado CSS Atualizado */
+.user-chip{display:flex;align-items:center;gap:14px;padding-left:16px;border-left:1px solid var(--border)}
+.user-chip strong{font-size:.85rem; font-weight: 700; color: var(--text);}
+.user-chip img{width:40px;height:40px;object-fit:none; border-radius:50%; background: var(--muted-surface); border: 2px solid var(--border); overflow: hidden;}
 
 .stage{min-height:0;overflow:auto;background:var(--stage)}
 .page{width:min(1100px,100%);margin:auto;padding:clamp(22px,3vw,44px)}
@@ -109,9 +110,7 @@ summary {
     letter-spacing: 0.05em;
 }
 
-summary::-webkit-details-marker {
-    display: none; 
-}
+summary::-webkit-details-marker { display: none; }
 
 summary::before {
     content: '\f0da'; 
@@ -132,9 +131,7 @@ details > *:not(summary) {
     line-height: 1.6;
 }
 
-details p, details div {
-    margin-bottom: 12px;
-}
+details p, details div { margin-bottom: 12px; }
 
 /* Rodapé "Links Úteis" */
 .tools-section { margin-top: 40px; padding-top: 40px; border-top: 1px solid var(--border); }
