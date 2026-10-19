@@ -14,7 +14,42 @@ if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 
-// 2. FUNÇÃO PARA ATUALIZAR OS LINKS ÚTEIS CONFORME A TRILHA
+// 2. FUNÇÃO PARA CARREGAR USUÁRIO LOGADO NO FIREBASE
+function carregarUsuarioLogado() {
+    firebase.auth().onAuthStateChanged(async (user) => {
+        const userNameEl = document.getElementById('user-name');
+        const userAvatarEl = document.getElementById('user-avatar');
+
+        if (user) {
+            // Tenta obter o nome pelo displayName nativo do Firebase Auth
+            let nickname = user.displayName;
+
+            // Se o displayName não estiver configurado, busca na coleção 'users'
+            if (!nickname) {
+                try {
+                    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+                    if (doc.exists && doc.data().nickname) {
+                        nickname = doc.data().nickname;
+                    } else {
+                        nickname = "Policial";
+                    }
+                } catch (e) {
+                    nickname = "Policial";
+                }
+            }
+
+            userNameEl.innerText = nickname;
+            // API do Habbo configurada para puxar apenas o rosto do avatar
+            userAvatarEl.src = `https://www.habbo.com.br/habbo-imaging/avatarimage?user=${nickname}&action=std&direction=2&head_direction=2&gesture=sml&size=m&headonly=1`;
+        } else {
+            // Caso não esteja logado
+            userNameEl.innerText = "Visitante";
+            userAvatarEl.src = "https://www.habbo.com.br/habbo-imaging/avatarimage?user=Habbo&action=std&direction=2&head_direction=2&gesture=sml&size=m&headonly=1";
+        }
+    });
+}
+
+// 3. FUNÇÃO PARA ATUALIZAR OS LINKS ÚTEIS CONFORME A TRILHA
 function atualizarRodape(idAula) {
     const container = document.getElementById('tools-container');
     if (!container) return;
@@ -25,7 +60,6 @@ function atualizarRodape(idAula) {
     let html = '';
 
     if (trilhaGrad.includes(idAula)) {
-        // --- RODAPÉ GRADUADORES ---
         html = `
             <a href="https://www.policiarcc.com/h222-prof-grad-relatorio" target="_blank" class="tool-card">
                 <div class="tool-icon"><i class="fa-solid fa-file-circle-plus"></i></div>
@@ -61,7 +95,6 @@ function atualizarRodape(idAula) {
             </a>
         `;
     } else if (trilhaCoord.includes(idAula)) {
-        // --- RODAPÉ COORDENADORES ---
         html = `
             <a href="https://www.policiarcc.com/h223-prof-coord-relatorio" target="_blank" class="tool-card">
                 <div class="tool-icon"><i class="fa-solid fa-file-circle-plus"></i></div>
@@ -105,7 +138,6 @@ function atualizarRodape(idAula) {
             </a>
         `;
     } else {
-        // --- RODAPÉ PROFESSORES ---
         html = `
             <a href="https://www.policiarcc.com/h217-prof-relatorio" target="_blank" class="tool-card">
                 <div class="tool-icon"><i class="fa-solid fa-file-circle-plus"></i></div>
@@ -185,7 +217,7 @@ function atualizarRodape(idAula) {
     container.innerHTML = html;
 }
 
-// 3. FUNÇÃO PARA TROCAR O CURSO PELO MENU LATERAL
+// 4. FUNÇÃO PARA TROCAR O CURSO PELO MENU LATERAL
 function trocarCurso(idAula, elementoClicado) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     if (elementoClicado) elementoClicado.classList.add('active');
@@ -201,6 +233,8 @@ function trocarCurso(idAula, elementoClicado) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    carregarUsuarioLogado(); // Chama a verificação do usuário ao carregar
+
     const aulaParaCarregar = document.body?.getAttribute("data-aula") || "cac";
     const navInicial = document.getElementById('nav-' + aulaParaCarregar);
     if (navInicial) navInicial.classList.add('active');
@@ -368,7 +402,6 @@ function processarScriptCompleto(container) {
 
         const textPuro = elemento.innerText.trim();
         
-        // 1. Verifica se é instrução [entre colchetes]
         if (textPuro.startsWith('[') && textPuro.endsWith(']')) {
             const instrucaoWrap = document.createElement("div");
             instrucaoWrap.className = "instruction";
@@ -377,7 +410,6 @@ function processarScriptCompleto(container) {
             return;
         }
 
-        // 2. Verifica se é um botão de ação (ex: CLIQUE AQUI PARA ENVIAR)
         const textoNorm = normalizeText(textPuro);
         if (textoNorm.includes('clique aqui') && (textoNorm.includes('enviar') || textoNorm.includes('apostila') || textoNorm.includes('slide') || textoNorm.includes('orientacao'))) {
             const btnAcao = document.createElement("button");
@@ -388,11 +420,9 @@ function processarScriptCompleto(container) {
             return;
         }
 
-        // 3. Caso normal: cria a estrutura copiável
         criarEstruturaCopia(elemento, elemento.innerHTML);
     });
 
-    // Bloco BBCODE
     const bbcodeBlocks = container.querySelectorAll(".bbcode-block");
     bbcodeBlocks.forEach(bloco => {
         const irmaoAnterior = bloco.previousElementSibling;
