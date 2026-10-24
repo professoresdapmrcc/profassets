@@ -1,3 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap');
+
+.spp-footer {
+  margin-top: 28px;
+  padding: 18px 12px 0;
+  color: var(--subtle);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.spp-footer p { margin: 0; }
+.spp-footer p:first-child { margin-bottom: 4px; color: var(--muted); }
+
 :root {
       --bg: #09050d;
       --surface: #140a1b;
