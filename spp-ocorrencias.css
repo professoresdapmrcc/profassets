@@ -1,9 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap');
 
 .spp-footer {
+  display: block;
+  position: static;
+  visibility: visible;
+  opacity: 1;
   margin-top: 28px;
   padding: 18px 12px 0;
-  color: var(--subtle);
+  color: #9785a3;
   text-align: center;
   font-size: 12px;
   line-height: 1.7;
