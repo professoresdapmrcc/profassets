@@ -215,15 +215,12 @@ const CARTAS_ORIGINAIS = Object.freeze({
       return firebaseConnection;
     }
 
-    async function findFirebaseMember(nickname) {
-      const { db, sdk } = await connectFirebase();
-      const result = await sdk.getDocs(sdk.collection(db, 'public_members'));
-      const key = String(nickname).trim().toLowerCase();
-      const matches = result.docs.map(document => document.data())
-        .filter(member => String(member.name || '').trim().toLowerCase() === key);
-      if (matches.length !== 1 || !matches[0].cargo) throw new Error('Membro não encontrado de forma única no Firebase. Envio bloqueado.');
-      if (!['Professor(a)', 'Coordenador(a)', 'Graduador(a)', 'Estagiário(a)', 'Conselheiro(a)', 'PMJ', 'COR', 'Vice-Líder', 'Líder'].includes(matches[0].cargo)) throw new Error('Cargo do membro não autorizado para este formulário.');
-      return matches[0];
+    function getCargoDoCaso(caso) {
+      const prefixo = String(caso).charAt(0).toUpperCase();
+      if (prefixo === 'A') return 'Graduador(a)';
+      if (prefixo === 'D') return 'Coordenador(a)';
+      // Equipe Beta (B), Ômega (O) ou fallback
+      return 'Professor(a)';
     }
 
     function requireForum() {
@@ -380,7 +377,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
       caseData.innerHTML = cards.join('');
       caseData.className = 'case-data visible';
       form.classList.add('has-case');
-      setStatus('success', `Caso ${data.caso} localizado em ${data.planilha}. Membro confirmado no Firebase.`);
+      setStatus('success', `Caso ${data.caso} localizado em ${data.planilha}. Membro e cargo identificados.`);
     }
 
     function updateSteps() {
@@ -427,8 +424,8 @@ const CARTAS_ORIGINAIS = Object.freeze({
           return;
         }
 
-        const member = await findFirebaseMember(payload.data.infrator);
-        state.caseData = { ...payload.data, cargo: member.cargo, infrator: member.name };
+        const cargoDefinido = getCargoDoCaso(payload.data.caso);
+        state.caseData = { ...payload.data, cargo: cargoDefinido, infrator: payload.data.infrator };
         renderCase(state.caseData);
       } catch (error) {
         setStatus('error', error.message || 'Não foi possível consultar o caso.');
@@ -500,9 +497,9 @@ const CARTAS_ORIGINAIS = Object.freeze({
         if (!operation) {
           const author = await forumAuthor();
           await connectFirebase();
-          const member = await findFirebaseMember(state.caseData.infrator);
+          const cargoDefinido = getCargoDoCaso(state.caseData.caso);
           const snapshot = {
-            data: { ...state.caseData, cargo: member.cargo, infrator: member.name },
+            data: { ...state.caseData, cargo: cargoDefinido, infrator: state.caseData.infrator },
             letter: state.letter, comments: $('#comments').value.trim(), author,
             date: new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date())
           };
