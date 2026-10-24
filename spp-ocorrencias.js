@@ -110,6 +110,10 @@ const SPP_APP_MARKUP = String.raw`<a class="skip-link" href="#main">Ir para o fo
         </form>
       </main>
     </div>
+    <footer class="spp-footer">
+      <p>Desenvolvido por Sr.Gabriel.</p>
+      <p>Todos os direitos reservados a Companhia dos Professores</p>
+    </footer>
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
@@ -142,8 +146,8 @@ const SPP_APP_MARKUP = String.raw`<a class="skip-link" href="#main">Ir para o fo
     </section>
   </div>`;
 
-const sppAppRoot = document.getElementById('spp-app');
-if (!sppAppRoot) throw new Error('Elemento #spp-app não encontrado.');
+const sppAppRoot = document.getElementById('app') || document.getElementById('spp-app');
+if (!sppAppRoot) throw new Error('Elemento #app não encontrado.');
 sppAppRoot.innerHTML = SPP_APP_MARKUP;
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw-Fjt34t6ueyt6NUm4QCT3ABy3IKVEFrZcaFQ__3CYHhOQ4a-A4ArcJfg5J_pzOqW-Gw/exec';
@@ -191,19 +195,31 @@ const CARTAS_ORIGINAIS = Object.freeze({
     let firebaseConnection;
     async function connectFirebase() {
       if (!firebaseConnection) firebaseConnection = (async () => {
-        const root = 'https://www.gstatic.com/firebasejs/12.15.0';
-        const [appSdk, authSdk, dbSdk] = await Promise.all([
-          import(`${root}/firebase-app.js`), import(`${root}/firebase-auth.js`), import(`${root}/firebase-firestore.js`)
-        ]);
-        const app = appSdk.getApps().find(item => item.name === 'spp-envios') || appSdk.initializeApp({
+        const firebase = window.firebase;
+        if (!firebase?.auth || !firebase?.firestore) throw new Error('As bibliotecas Firebase não carregaram. Atualize a página.');
+        const app = firebase.apps.find(item => item.name === 'spp-envios') || firebase.initializeApp({
           apiKey: 'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',
           authDomain: 'nexusprof.firebaseapp.com', projectId: 'nexusprof',
           appId: '1:268861178598:web:9686b81bb003f9514fb127'
         }, 'spp-envios');
-        const auth = authSdk.getAuth(app);
-        await auth.authStateReady();
-        if (!auth.currentUser) await authSdk.signInAnonymously(auth);
-        return { db: dbSdk.getFirestore(app), sdk: dbSdk };
+        const auth = app.auth();
+        await new Promise((resolve, reject) => {
+          let unsubscribe;
+          unsubscribe = auth.onAuthStateChanged(() => { unsubscribe?.(); resolve(); }, reject);
+        });
+        if (!auth.currentUser) await auth.signInAnonymously();
+        const sdk = {
+          collection: (db, name) => db.collection(name),
+          getDocs: reference => reference.get(),
+          doc: (db, collection, id) => db.collection(collection).doc(id),
+          getDoc: async reference => {
+            const snapshot = await reference.get();
+            return { exists: () => snapshot.exists };
+          },
+          setDoc: (reference, data) => reference.set(data),
+          serverTimestamp: () => firebase.firestore.FieldValue.serverTimestamp()
+        };
+        return { db: app.firestore(), sdk };
       })().catch(error => { firebaseConnection = null; throw error; });
       return firebaseConnection;
     }
