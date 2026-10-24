@@ -365,6 +365,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
       const cards = [
         dataCard('Cargo + nick', `${data.cargo} ${data.infrator}`),
         dataCard('Planilha do erro', data.planilha),
+        dataCard('Linha(s) do erro', data.linha),
         dataCard('Provas', data.provas)
       ];
 
