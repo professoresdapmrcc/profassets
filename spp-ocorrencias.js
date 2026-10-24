@@ -128,9 +128,8 @@ const SPP_APP_MARKUP = String.raw`<a class="skip-link" href="#main">Ir para o fo
       <div class="modal-review-content">
         <div id="reviewList" class="review-list"></div>
         <div class="flow-preview" aria-label="Ordem planejada do envio">
-          <div class="flow-item"><span>01</span><strong>Publicar no Quadro de Erros e Advertências</strong></div>
-          <div class="flow-item"><span>02</span><strong>Enviar a carta por Mensagem Privada</strong></div>
-          <div class="flow-item"><span>03</span><strong>Registrando ocorrência...</strong></div>
+          <div class="flow-item"><span>01</span><strong>Enviar a carta por Mensagem Privada</strong></div>
+          <div class="flow-item"><span>02</span><strong>Registrando ocorrência no sistema...</strong></div>
         </div>
         <div class="modal-actions">
           <button id="cancelModal" class="btn btn-secondary" type="button">Voltar e editar</button>
@@ -152,8 +151,7 @@ if (!sppAppRoot) throw new Error('Elemento #app não encontrado.');
 sppAppRoot.innerHTML = SPP_APP_MARKUP;
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw-Fjt34t6ueyt6NUm4QCT3ABy3IKVEFrZcaFQ__3CYHhOQ4a-A4ArcJfg5J_pzOqW-Gw/exec';
-// CARTAS ORIGINAIS: conteúdo integral enviado pelo usuário.
-// Os placeholders abaixo recebem os dados do caso; não reescrever os textos das cartas.
+
 const CARTA_SPP_ERRO_TEMPLATE = `[font=Poppins][table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="2d0f37"][table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px" bgcolor="#4e1a5f"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden"][img]https://i.imgur.com/N4a5Cg5.gif[/img][/td][/tr][/table]\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px" bgcolor="#4e1a5f"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden"][img]https://i.imgur.com/fGALWSp.gif[/img]\n[color=white][b][size=18][SPP] CARTA DE AVISO[/size][/b][/color]\n\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.2em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="ffffff"][table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.4em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="EDF1F2"]\n[center]Olá, [color=#4e1a5f][b]{USERNAME}[/b][/color].[/center]\n\n[center]<div><hr style="border-top:2px solid #4e1a5f;width:25%;margin-top:.3px;padding:1.3%;" /></div>[/center]\n[justify][b][color=#4e1a5f]O Serviço de Proteção de Professores[/color][/b] vem, por meio desta Mensagem Privada, informar que você cometeu uma infração. Confira a ocorrência abaixo:\n\n[color=#4e1a5f][b]Número do caso/erro:[/b][/color] {SPP_NUMERO_CASO_ERRO}\n[color=#4e1a5f][b]Planilha da postagem:[/b][/color] {SPP_PLANILHA_POSTAGEM}\n[color=#4e1a5f][b]Linha(s) onde há o erro:[/b][/color] {SPP_LINHAS_ERRO}\n[color=#4e1a5f][b]Ocorrência:[/b][/color] {SPP_OCORRENCIA}\n[color=#4e1a5f][b]Provas:[/b][/color] {SPP_PROVAS}\n[color=#4e1a5f][b]Comentários:[/b][/color] {SPP_COMENTARIOS}[/justify]\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.2em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="E1E5E6"][size=10][justify]Pedimos o redobro da atenção para evitar futuras punições. Caso queira contestar esta ocorrência, é necessário recorrer ao Comando do Serviço de Proteção dos Professores apresentando motivos plausíveis e coerentes. Poderá ainda recorrer à Liderança da companhia como última instância.[url=https://sites.google.com/view/nexusprof/documenta%C3%A7%C3%B5es?authuser=3][color=#4e1a5f][b] Clique aqui[/b][/color][/url] para acessar os documentos da companhia dos Professores e ficar a conhecer todas as normativas.[/justify][/size][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/font]`;
 
 const CARTA_SPP_ADV_VERBAL_TEMPLATE = `[font=Poppins][table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="2d0f37"][table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px" bgcolor="#4e1a5f"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden"][img]https://i.imgur.com/N4a5Cg5.gif[/img][/td][/tr][/table]\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 0.6em; border-radius: 15px" bgcolor="#4e1a5f"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden"][img]https://i.imgur.com/fGALWSp.gif[/img]\n[color=white][b][size=18][SPP] CARTA DE NOTIFICAÇÃO[/size][/b][/color]\n\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.2em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="ffffff"][table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.4em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="EDF1F2"]\n[center]Olá, [color=#4e1a5f][b]{USERNAME}[/b][/color].[/center]\n\n[center]<div><hr style="border-top:2px solid #4e1a5f;width:25%;margin-top:.3px;padding:1.3%;" /></div>[/center]\n[justify][b][color=#4e1a5f]O Serviço de Proteção de Professores[/color][/b] vem, por meio desta Mensagem Privada, informar que você cometeu uma infração. Confira a ocorrência abaixo:\n\n[color=#4e1a5f][b]Número do caso/erro:[/b][/color] {SPP_NUMERO_CASO_ERRO}\n[color=#4e1a5f][b]Planilha da postagem:[/b][/color] {SPP_PLANILHA_POSTAGEM}\n[color=#4e1a5f][b]Linha(s) onde há o erro:[/b][/color] {SPP_LINHAS_ERRO}\n[color=#4e1a5f][b]Ocorrência:[/b][/color] {SPP_OCORRENCIA}\n[color=#4e1a5f][b]Provas:[/b][/color] {SPP_PROVAS}\n[color=#4e1a5f][b]Comentários:[/b][/color] {SPP_COMENTARIOS}[/justify]\n\n[table style="width: 100%; border: none!important; overflow: hidden; line-height: 1.2em; border-radius: 15px"][tr style="overflow: hidden; border: none !important;"][td style="border: none!important; overflow: hidden" bgcolor="E1E5E6"][size=10][justify]Note que [b][color=#4e1a5f]o acúmulo de 03 (três) notificações resultam numa advertência interna[/color][/b]. Pedimos o redobro da atenção para evitar futuras punições. Caso queira contestar esta ocorrência, é necessário recorrer ao Comando do Serviço de Proteção dos Professores apresentando motivos plausíveis e coerentes. Poderá ainda recorrer à Liderança da companhia como última instância.[url=https://sites.google.com/view/nexusprof/documenta%C3%A7%C3%B5es?authuser=3][color=#4e1a5f][b] Clique aqui[/b][/color][/url] para acessar os documentos da companhia dos Professores e ficar a conhecer todas as normativas. [b][color=#4e1a5f]Se a ocorrência em causa incorrer de anulação de aula, o seu relatório não contabilizará para a meta vigente.[/color][/b][/justify][/size][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/td][/tr][/table][/font]`;
@@ -179,11 +177,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
 });
 
     const PERMISSION = 'Serviço de Proteção dos Professores';
-    // Ativar somente depois de publicar a regra específica spp_envios no Firestore.
-    // Mantém o envio ao fórum bloqueado enquanto a gravação final não está autorizada.
-    const SPP_DEPLOYMENT = { firebaseRulesReady: false };
-    const TOPIC_ID = '32246';
-    const TOPIC_URL = `https://www.policiarcc.com/t${TOPIC_ID}-?view=newest`;
+    const SPP_DEPLOYMENT = { firebaseRulesReady: true };
     const OUTBOX_URL = 'https://www.policiarcc.com/privmsg?folder=outbox';
     const LETTERS = Object.freeze({
       'Aviso': { type: 'erro', punishment: 'ERRO', title: 'AVISO' },
@@ -194,21 +188,17 @@ const CARTAS_ORIGINAIS = Object.freeze({
       'Expulsão': { type: 'expulsao', punishment: 'EXPULSÃO', title: 'EXPULSÃO' }
     });
     let firebaseConnection;
+
     async function connectFirebase() {
       if (!firebaseConnection) firebaseConnection = (async () => {
         const firebase = window.firebase;
-        if (!firebase?.auth || !firebase?.firestore) throw new Error('As bibliotecas Firebase não carregaram. Atualize a página.');
+        if (!firebase?.firestore) throw new Error('As bibliotecas Firebase não carregaram. Atualize a página.');
         const app = firebase.apps.find(item => item.name === 'spp-envios') || firebase.initializeApp({
           apiKey: 'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',
           authDomain: 'nexusprof.firebaseapp.com', projectId: 'nexusprof',
           appId: '1:268861178598:web:9686b81bb003f9514fb127'
         }, 'spp-envios');
-        const auth = app.auth();
-        await new Promise((resolve, reject) => {
-          let unsubscribe;
-          unsubscribe = auth.onAuthStateChanged(() => { unsubscribe?.(); resolve(); }, reject);
-        });
-        if (!auth.currentUser) await auth.signInAnonymously();
+        
         const sdk = {
           collection: (db, name) => db.collection(name),
           getDocs: reference => reference.get(),
@@ -224,6 +214,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
       })().catch(error => { firebaseConnection = null; throw error; });
       return firebaseConnection;
     }
+
     async function findFirebaseMember(nickname) {
       const { db, sdk } = await connectFirebase();
       const result = await sdk.getDocs(sdk.collection(db, 'public_members'));
@@ -234,11 +225,13 @@ const CARTAS_ORIGINAIS = Object.freeze({
       if (!['Professor(a)', 'Coordenador(a)', 'Graduador(a)', 'Estagiário(a)', 'Conselheiro(a)', 'PMJ', 'COR', 'Vice-Líder', 'Líder'].includes(matches[0].cargo)) throw new Error('Cargo do membro não autorizado para este formulário.');
       return matches[0];
     }
+
     function requireForum() {
       if (location.protocol !== 'https:' || !/^(www\.)?policiarcc\.com$/.test(location.hostname)) {
         throw new Error('Abra este formulário no fórum policiarcc.com e entre na sua conta para enviar.');
       }
     }
+
     async function forumAuthor() {
       requireForum();
       const direct = window._userdata?.username;
@@ -253,9 +246,11 @@ const CARTAS_ORIGINAIS = Object.freeze({
       decoder.innerHTML = match[1];
       return decoder.value;
     }
+
     function bbText(value) {
       return String(value || '').replace(/\[/g, '［').replace(/\]/g, '］').replace(/</g, '‹').replace(/>/g, '›');
     }
+
     function fillOriginalLetter({ data, letter, comments }) {
       const template = CARTAS_ORIGINAIS[letter];
       if (!template) throw new Error('Carta original não encontrada. Envio bloqueado.');
@@ -270,18 +265,18 @@ const CARTAS_ORIGINAIS = Object.freeze({
       };
       return template.replace(/\{(USERNAME|SPP_[A-Z_]+)\}/g, (placeholder, key) => bbText(values[key]));
     }
+
     function buildMessages(snapshot) {
       const { data, letter, comments, date } = snapshot;
       const definition = LETTERS[letter];
       const reason = data.ocorrencia || data.comentarios || comments;
       if (!reason) throw new Error('Preencha os comentários da ocorrência.');
-      const details = `[b]Número do caso:[/b] ${bbText(data.caso)}\n[b]Planilha da postagem:[/b] ${bbText(data.planilha)}\n[b]Ocorrência:[/b] ${bbText(reason)}\n[b]Provas:[/b] ${bbText(data.provas)}\n[b]Comentários:[/b] ${bbText(comments || 'Sem comentários adicionais.')}`;
       return {
         subject: `[SPP] CARTA DE ${definition.title}`,
-        board: `[font=Poppins][size=18][center][color=#560c7e][b]${definition.punishment}[/b][/color][/center][/size]\n[justify][b]Cargo e nick:[/b] ${bbText(data.cargo)} ${bbText(data.infrator)}\n[b]Motivo(s):[/b] ${bbText(reason)}\n${details}\n[b]Data:[/b] ${date}\n[b]Permissão:[/b] ${PERMISSION}[/justify][/font]`,
         letter: fillOriginalLetter(snapshot)
       };
     }
+
     async function forumForm(url) {
       const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error('Não foi possível carregar o formulário de envio do fórum.');
@@ -293,6 +288,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
       form.querySelectorAll('input[type="hidden"][name]').forEach(input => values.append(input.name, input.value));
       return values;
     }
+
     async function postForum(endpoint, values, kind) {
       const response = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', body: values });
       if (!response.ok) throw new Error(`O fórum não confirmou ${kind}. Confira o fórum antes de repetir.`);
@@ -301,8 +297,10 @@ const CARTAS_ORIGINAIS = Object.freeze({
       const confirmed = /mensagem (?:foi )?(?:enviada|publicada|registrada)(?: com sucesso)?|your message has been (?:sent|entered)|message (?:has been )?sent successfully/.test(text);
       if (!confirmed || /\/login(?:\?|$)/.test(response.url)) throw new Error(`Não foi possível confirmar ${kind}. O processo foi interrompido. Verifique se a publicação existe antes de repetir.`);
     }
+
     function operationKey(data, letter) { return `spp-envio:${data.caso}:${encodeURIComponent(data.infrator)}:${LETTERS[letter].type}`; }
     function saveOperation(key, operation) { localStorage.setItem(key, JSON.stringify(operation)); }
+
     async function persistOccurrence(snapshot, operation) {
       const { db, sdk } = await connectFirebase();
       const reference = sdk.doc(db, 'assistencia_registros', operation.id);
@@ -322,6 +320,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
         timestamp: sdk.serverTimestamp(), atualizadoEm: sdk.serverTimestamp()
       });
     }
+
     const state = { letter: '', caseData: null };
 
     const $ = (selector) => document.querySelector(selector);
@@ -492,10 +491,12 @@ const CARTAS_ORIGINAIS = Object.freeze({
 
       try {
         requireForum();
-        if (!SPP_DEPLOYMENT.firebaseRulesReady) throw new Error('Envio bloqueado: a regra de gravação SPP no Firebase precisa ser publicada antes da ativação. Nenhuma postagem ou carta foi enviada.');
+        if (!SPP_DEPLOYMENT.firebaseRulesReady) throw new Error('Envio bloqueado: a regra de gravação SPP no Firebase precisa ser publicada antes da ativação.');
         const key = operationKey(state.caseData, state.letter);
         let operation = JSON.parse(localStorage.getItem(key) || 'null');
-        if (operation?.pending) throw new Error('Um envio anterior ficou sem confirmação. Confira o tópico e a caixa de envios antes de repetir.');
+        
+        if (operation?.pending) throw new Error('Um envio anterior ficou sem confirmação. Confira a caixa de envios antes de repetir.');
+        
         if (!operation) {
           const author = await forumAuthor();
           await connectFirebase();
@@ -507,18 +508,12 @@ const CARTAS_ORIGINAIS = Object.freeze({
           };
           if (snapshot.comments.length > 1000 || String(snapshot.data.ocorrencia || snapshot.data.comentarios || snapshot.comments).length > 1500) throw new Error('Comentários: máximo de 1000 caracteres. Ocorrência: máximo de 1500 caracteres.');
           buildMessages(snapshot);
-          operation = { id: `spp_${crypto.randomUUID()}`, snapshot, board: false, pm: false, firebase: false, pending: '' };
+          operation = { id: `spp_${crypto.randomUUID()}`, snapshot, pm: false, firebase: false, pending: '' };
           saveOperation(key, operation);
         }
+        
         const messages = buildMessages(operation.snapshot);
-        if (!operation.board) {
-          processingMessage.textContent = 'Publicando no Quadro de Erros e Advertências...';
-          const values = await forumForm(`/post?t=${TOPIC_ID}&mode=reply`);
-          values.set('t', TOPIC_ID); values.set('mode', 'reply'); values.set('post', 'Enviar'); values.set('message', messages.board);
-          operation.pending = 'board'; saveOperation(key, operation);
-          await postForum('/post', values, 'a postagem no quadro');
-          operation.board = true; operation.pending = ''; saveOperation(key, operation);
-        }
+        
         if (!operation.pm) {
           processingMessage.textContent = 'Enviando a carta por Mensagem Privada...';
           const values = await forumForm('/privmsg?mode=post');
@@ -529,19 +524,21 @@ const CARTAS_ORIGINAIS = Object.freeze({
           await postForum('/privmsg', values, 'o envio da carta');
           operation.pm = true; operation.pending = ''; saveOperation(key, operation);
         }
+        
         if (!operation.firebase) {
           processingMessage.textContent = 'Registrando ocorrência...';
           await persistOccurrence(operation.snapshot, operation);
           operation.firebase = true; saveOperation(key, operation);
         }
+        
         let seconds = 5;
         processingTitle.textContent = 'Envio confirmado';
-        processingMessage.innerHTML = `Abrindo o Quadro de Erros e a caixa de mensagem em <span class="countdown-number">${seconds}</span>...`;
+        processingMessage.innerHTML = `Abrindo a caixa de mensagem em <span class="countdown-number">${seconds}</span>...`;
 
         countdownTimer = setInterval(() => {
           seconds -= 1;
           if (seconds > 0) {
-            processingMessage.innerHTML = `Abrindo o Quadro de Erros e a caixa de mensagem em <span class="countdown-number">${seconds}</span>...`;
+            processingMessage.innerHTML = `Abrindo a caixa de mensagem em <span class="countdown-number">${seconds}</span>...`;
             return;
           }
 
@@ -549,10 +546,9 @@ const CARTAS_ORIGINAIS = Object.freeze({
           processingActive = false;
           modal.classList.add('processing-complete');
           modal.querySelector('.processing-spinner').hidden = true;
-          processingMessage.textContent = 'Envio concluído. Abrindo o Quadro de Erros e a caixa de envios.';
-          processingMessage.insertAdjacentHTML('beforeend', `<br><a href="${OUTBOX_URL}" target="_blank" rel="noopener">Abrir caixa de envios</a> · <a href="${TOPIC_URL}" target="_blank" rel="noopener">Abrir quadro</a>`);
-          window.open(OUTBOX_URL, '_blank', 'noopener');
-          window.location.assign(TOPIC_URL);
+          processingMessage.textContent = 'Envio concluído. Abrindo a caixa de envios.';
+          processingMessage.insertAdjacentHTML('beforeend', `<br><a href="${OUTBOX_URL}" target="_blank" rel="noopener">Abrir caixa de envios</a>`);
+          window.location.assign(OUTBOX_URL);
         }, 1000);
       } catch (error) {
         processingActive = false;
