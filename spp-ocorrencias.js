@@ -1,5 +1,6 @@
 /*
  * SPP Central de Envios
+ * Publicação: rodapé Sr.Gabriel — 2026-10-24.
  * O formulário, o modal e toda a lógica da interface são montados por este arquivo.
  * Não coloque senhas, tokens administrativos ou segredos neste JavaScript público.
  */
