@@ -226,7 +226,6 @@ const CARTAS_ORIGINAIS = Object.freeze({
       const prefixo = String(caso).charAt(0).toUpperCase();
       if (prefixo === 'A') return 'Graduador(a)';
       if (prefixo === 'D') return 'Coordenador(a)';
-      // Equipe Beta (B), Ômega (O) ou fallback
       return 'Professor(a)';
     }
 
@@ -305,24 +304,43 @@ const CARTAS_ORIGINAIS = Object.freeze({
     function operationKey(data, letter) { return `spp-envio:${data.caso}:${encodeURIComponent(data.infrator)}:${LETTERS[letter].type}`; }
     function saveOperation(key, operation) { localStorage.setItem(key, JSON.stringify(operation)); }
 
+    function formatDate(dateObj) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(dateObj.getDate())}/${pad(dateObj.getMonth() + 1)}/${dateObj.getFullYear()}`;
+    }
+    
+    function formatIso(dateObj) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
+    }
+
     async function persistOccurrence(snapshot, operation) {
       const { db, sdk } = await connectFirebase();
       const reference = sdk.doc(db, 'assistencia_registros', operation.id);
       if ((await sdk.getDoc(reference)).exists()) return;
-      const { data, letter, comments, author, date } = snapshot;
-      const [day, month, year] = date.split('/');
-      const end = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 30));
-      await sdk.setDoc(reference, {
+      const { data, letter, comments, author } = snapshot;
+      
+      const now = new Date();
+      const dateFormated = formatDate(now);
+      const dateIso = formatIso(now);
+      
+      const end = new Date(now);
+      end.setDate(end.getDate() + 30);
+      const endFormated = formatDate(end);
+      
+      const firestoreData = {
         cargo: data.cargo, nick: data.infrator, punicao: LETTERS[letter].punishment,
         caso: data.caso, planilha: data.planilha,
         motivo: data.ocorrencia || data.comentarios || comments, permissao: PERMISSION,
-        data_formatada: date, data_iso: `${year}-${month}-${day}`,
-        data_termino: `${String(end.getUTCDate()).padStart(2, '0')}/${String(end.getUTCMonth() + 1).padStart(2, '0')}/${end.getUTCFullYear()}`,
+        data_formatada: dateFormated, data_iso: dateIso,
+        data_termino: endFormated,
         decisao: 'PENDENTE', observacao: comments, carta_enviada: true,
         autor_postagem: author, sincronizado_sheets: false, tipo_ocorrencia: LETTERS[letter].type,
         origem: 'spp_envios', anexo: String(data.provas || '').match(/https?:\/\/[^\s\[\]<>]+/)?.[0] || '',
         timestamp: sdk.serverTimestamp(), atualizadoEm: sdk.serverTimestamp()
-      });
+      };
+      
+      await sdk.setDoc(reference, firestoreData);
     }
 
     const state = { letter: '', caseData: null };
@@ -509,8 +527,7 @@ const CARTAS_ORIGINAIS = Object.freeze({
           const cargoDefinido = getCargoDoCaso(state.caseData.caso);
           const snapshot = {
             data: { ...state.caseData, cargo: cargoDefinido, infrator: state.caseData.infrator },
-            letter: state.letter, comments: $('#comments').value.trim(), author,
-            date: new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+            letter: state.letter, comments: $('#comments').value.trim(), author
           };
           if (snapshot.comments.length > 1000 || String(snapshot.data.ocorrencia || snapshot.data.comentarios || snapshot.comments).length > 1500) throw new Error('Comentários: máximo de 1000 caracteres. Ocorrência: máximo de 1500 caracteres.');
           buildMessages(snapshot);
