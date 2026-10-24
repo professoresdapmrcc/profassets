@@ -192,13 +192,20 @@ const CARTAS_ORIGINAIS = Object.freeze({
     async function connectFirebase() {
       if (!firebaseConnection) firebaseConnection = (async () => {
         const firebase = window.firebase;
-        if (!firebase?.firestore) throw new Error('As bibliotecas Firebase não carregaram. Atualize a página.');
+        if (!firebase?.auth || !firebase?.firestore) throw new Error('As bibliotecas Firebase não carregaram. Atualize a página.');
         const app = firebase.apps.find(item => item.name === 'spp-envios') || firebase.initializeApp({
           apiKey: 'AIzaSyDo4DagZchii1cPKFighZU5KAjppp98HJE',
           authDomain: 'nexusprof.firebaseapp.com', projectId: 'nexusprof',
           appId: '1:268861178598:web:9686b81bb003f9514fb127'
         }, 'spp-envios');
         
+        const auth = app.auth();
+        await new Promise((resolve, reject) => {
+          let unsubscribe;
+          unsubscribe = auth.onAuthStateChanged(() => { unsubscribe?.(); resolve(); }, reject);
+        });
+        if (!auth.currentUser) await auth.signInAnonymously();
+
         const sdk = {
           collection: (db, name) => db.collection(name),
           getDocs: reference => reference.get(),
@@ -362,10 +369,11 @@ const CARTAS_ORIGINAIS = Object.freeze({
 
     function renderCase(data) {
       const isOmega = data.tipoRegistro === 'omega';
+      const linhaInfo = data.linha ? ` (Linha ${data.linha})` : '';
+      
       const cards = [
         dataCard('Cargo + nick', `${data.cargo} ${data.infrator}`),
-        dataCard('Planilha do erro', data.planilha),
-        dataCard('Linha(s) do erro', data.linha),
+        dataCard('Planilha do erro', `${data.planilha}${linhaInfo}`),
         dataCard('Provas', data.provas)
       ];
 
