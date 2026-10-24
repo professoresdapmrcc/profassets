@@ -58,11 +58,11 @@ const SPP_APP_MARKUP = String.raw`<a class="skip-link" href="#main">Ir para o fo
               <select id="letterSelect" class="letter-select" name="letter" required>
                 <option value="">Selecione uma carta...</option>
                 <option value="Aviso">Aviso — erro de postagem</option>
-                <option value="Notificação">Notificação — registro por infração</option>
-                <option value="Advertência interna">Advertência interna — reincidência formal</option>
-                <option value="Medalhas negativas">Medalhas negativas — aplicação de 10 medalhas</option>
-                <option value="Rebaixamento">Rebaixamento — 50 medalhas + rebaixamento</option>
-                <option value="Expulsão">Expulsão — 100 medalhas + desligamento</option>
+                <option value="Notificação">Notificação</option>
+                <option value="Advertência interna">Advertência Interna</option>
+                <option value="Medalhas negativas">Medalhas Negativas</option>
+                <option value="Rebaixamento">Rebaixamento</option>
+                <option value="Expulsão">Expulsão</option>
               </select>
             </div>
             <div id="selectedLetterPreview" class="selected-letter-preview" aria-live="polite"></div>
