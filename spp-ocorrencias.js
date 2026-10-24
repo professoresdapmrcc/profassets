@@ -57,7 +57,7 @@ const SPP_APP_MARKUP = String.raw`<a class="skip-link" href="#main">Ir para o fo
               <label class="helper" for="letterSelect">Tipo de carta</label>
               <select id="letterSelect" class="letter-select" name="letter" required>
                 <option value="">Selecione uma carta...</option>
-                <option value="Aviso">Aviso — erro de postagem</option>
+                <option value="Aviso">Aviso</option>
                 <option value="Notificação">Notificação</option>
                 <option value="Advertência interna">Advertência Interna</option>
                 <option value="Medalhas negativas">Medalhas Negativas</option>
