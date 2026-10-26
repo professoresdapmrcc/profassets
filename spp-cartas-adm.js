@@ -171,7 +171,7 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
       destinationFields.innerHTML = `<div class="permission-card"><span>Destino definido pela carta</span><strong>Grupo g${letter.fixedGroup}</strong></div>`;
       return;
     }
-    destinationFields.innerHTML = `<div class="case-search"><div class="field"><label for="recipientMode">Tipo de destinatário</label><select id="recipientMode"><option value="members">Membros específicos</option><option value="group">Grupo do fórum</option></select></div><div id="recipientControl" class="field"></div><span class="helper">Separe vários nicknames por vírgula ou por linha.</span></div>`;
+    destinationFields.innerHTML = `<div class="case-search"><div class="field"><label for="recipientMode">Tipo de destinatário</label><select id="recipientMode"><option value="members">Membros específicos</option><option value="group">Grupo do fórum</option></select></div><div id="recipientControl" class="field"></div><span class="helper">Para mais de um membro, separe os nicknames por vírgula ou pressione Enter após cada nome.</span></div>`;
     $('#recipientMode').value = state.mode;
     $('#recipientMode').addEventListener('change', event => { state.mode = event.target.value; renderRecipientControl(); validate(); });
     renderRecipientControl();
@@ -181,7 +181,7 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
     const control = $('#recipientControl');
     if (!control) return;
     if (state.mode === 'members') {
-      control.innerHTML = '<label for="membersInput">Nickname(s)</label><textarea id="membersInput" maxlength="1500" placeholder="Ex.: Fulano, Ciclano, Beltrano"></textarea>';
+      control.innerHTML = '<label for="membersInput">Nickname(s)</label><textarea id="membersInput" maxlength="1500" placeholder="Ex.: Fulano, Ciclano&#10;ou um nickname por linha"></textarea>';
       $('#membersInput').addEventListener('input', validate);
       return;
     }
