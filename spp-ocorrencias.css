@@ -1083,6 +1083,18 @@ body {
       color-scheme: dark;
     }
 
+    #destinationFields select option,
+    #dynamicFields select option {
+      color: #fff8ff;
+      background: #100a16;
+    }
+
+    #destinationFields select option:checked,
+    #dynamicFields select option:checked {
+      color: #ffffff;
+      background: #4d1a5f;
+    }
+
     #destinationFields textarea,
     #dynamicFields textarea {
       min-height: 112px;
