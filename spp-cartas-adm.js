@@ -139,7 +139,17 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
 
   const $ = selector => root.querySelector(selector) || document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const state = { letter: '', mode: 'members', groups: [], sending: false };
+  const DEFAULT_GROUPS = Object.freeze([
+    { id: '10', label: 'g10 — Professores' },
+    { id: '11', label: 'g11 — Liderança dos Professores' },
+    { id: '72', label: 'g72 — Conselho dos Professores' },
+    { id: '397', label: 'g397 — Estagiários dos Professores' },
+    { id: '231', label: 'g231 — Graduadores dos Professores' },
+    { id: '458', label: 'g458 — Coordenadores dos Professores' },
+    { id: '752', label: 'g752 — PROF.SPP Peritos' },
+    { id: '762', label: 'g762 — PROF.SPP Comando' }
+  ]);
+  const state = { letter: '', mode: 'members', groups: [...DEFAULT_GROUPS], sending: false };
   const form = $('#letterForm');
   const letterSelect = $('#letterSelect');
   const destinationFields = $('#destinationFields');
@@ -185,17 +195,26 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
       $('#membersInput').addEventListener('input', validate);
       return;
     }
-    const options = state.groups.length ? `<option value="">Selecione o grupo...</option>${state.groups.map(group => `<option value="${escapeHtml(group.value)}">${escapeHtml(group.label)}</option>`).join('')}` : '<option value="">Carregando grupos...</option>';
-    control.innerHTML = `<label for="groupSelect">Grupo</label><select id="groupSelect" ${state.groups.length ? '' : 'disabled'}>${options}</select>`;
-    $('#groupSelect').addEventListener('change', validate);
-    if (!state.groups.length) void loadGroups();
+    const options = DEFAULT_GROUPS.map(group => `<option value="g:${group.id}">${escapeHtml(group.label)}</option>`).join('');
+    control.innerHTML = `<label for="groupSelect">Grupo</label><select id="groupSelect"><option value="">Selecione o grupo...</option>${options}<option value="custom">Outro grupo...</option></select><div id="customGroupField" class="field wide" hidden><label for="customGroupInput">Código ou link do grupo</label><input id="customGroupInput" type="text" maxlength="180" inputmode="url" placeholder="Ex.: g10 ou https://www.policiarcc.com/g10-professores"><span class="helper">Informe o código, número ou link do grupo.</span></div>`;
+    const select = $('#groupSelect');
+    const customField = $('#customGroupField');
+    const customInput = $('#customGroupInput');
+    const syncCustomGroup = () => {
+      const custom = select.value === 'custom';
+      customField.hidden = !custom;
+      if (custom) customInput.focus();
+      validate();
+    };
+    select.addEventListener('change', syncCustomGroup);
+    customInput.addEventListener('input', validate);
   }
 
   function renderFields() {
     const letter = currentLetter();
     if (!letter) { dynamicFields.replaceChildren(); return; }
     const sender = letter.sender ? '<div class="field"><label for="sender">Remetente</label><select id="sender"><option value="O Comando">O Comando</option><option value="A Perícia">A Perícia</option></select></div>' : '';
-    const fields = letter.fields.map(([name, label, type = 'text', placeholder = '']) => `<div class="field"><label for="${name}">${escapeHtml(label)}</label>${type === 'textarea' ? `<textarea id="${name}" maxlength="1800" placeholder="${escapeHtml(placeholder)}" required></textarea>` : `<input id="${name}" type="text" maxlength="500" placeholder="${escapeHtml(placeholder)}" required>`}</div>`).join('');
+    const fields = letter.fields.map(([name, label, type = 'text', placeholder = '']) => { const wide = /^motivo/i.test(label) ? ' wide' : ''; return `<div class="field${wide}"><label for="${name}">${escapeHtml(label)}</label>${type === 'textarea' ? `<textarea id="${name}" maxlength="1800" placeholder="${escapeHtml(placeholder)}" required></textarea>` : `<input id="${name}" type="text" maxlength="500" placeholder="${escapeHtml(placeholder)}" required>`}</div>`; }).join('');
     dynamicFields.innerHTML = `<div class="case-search">${sender}${fields || '<span class="helper">Esta carta não exige informações adicionais.</span>'}</div>`;
     dynamicFields.querySelectorAll('input,textarea,select').forEach(input => input.addEventListener('input', validate));
   }
@@ -238,7 +257,18 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
       return { mode: 'members', members, label: members.join(', ') };
     }
     const select = $('#groupSelect');
-    return { mode: 'group', groupValue: select?.value || '', label: select?.selectedOptions?.[0]?.textContent?.trim() || '' };
+    const selected = select?.value || '';
+    if (selected.startsWith('g:')) {
+      const groupId = selected.slice(2);
+      return { mode: 'group', groupId, label: select.selectedOptions[0]?.textContent?.trim() || `Grupo g${groupId}` };
+    }
+    if (selected === 'custom') {
+      const raw = $('#customGroupInput')?.value.trim() || '';
+      const match = raw.match(/(?:^|\/|\b)g?(\d+)(?:-|\/|\b)/i);
+      const groupId = match?.[1] || '';
+      return { mode: 'group', groupId, label: groupId ? `Grupo g${groupId}` : raw };
+    }
+    return { mode: 'group', groupId: '', label: '' };
   }
 
   function collectSnapshot() {
