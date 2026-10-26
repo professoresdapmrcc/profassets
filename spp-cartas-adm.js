@@ -141,11 +141,7 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
   const $$ = selector => [...document.querySelectorAll(selector)];
   const DEFAULT_GROUPS = Object.freeze([
     { id: '10', label: 'g10 — Professores' },
-    { id: '11', label: 'g11 — Liderança dos Professores' },
-    { id: '72', label: 'g72 — Conselho dos Professores' },
-    { id: '397', label: 'g397 — Estagiários dos Professores' },
-    { id: '231', label: 'g231 — Graduadores dos Professores' },
-    { id: '458', label: 'g458 — Coordenadores dos Professores' },
+    { id: '336', label: 'g336 — PROF. Serviço de Proteção dos Professores' },
     { id: '752', label: 'g752 — PROF.SPP Peritos' },
     { id: '762', label: 'g762 — PROF.SPP Comando' }
   ]);
