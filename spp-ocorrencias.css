@@ -1025,3 +1025,95 @@ body {
       .form-body > section:not(.summary),
       .summary { padding: 22px 19px; }
     }
+
+    /* Central de Cartas ADM — destinatários e campos dinâmicos */
+    #destinationFields .case-search,
+    #dynamicFields .case-search {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 16px;
+    }
+
+    #destinationFields .field,
+    #dynamicFields .field {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    #destinationFields label,
+    #dynamicFields label {
+      color: #f6ecfa;
+      font: 700 .72rem "Poppins", sans-serif;
+      letter-spacing: .015em;
+    }
+
+    #destinationFields select,
+    #destinationFields input,
+    #destinationFields textarea,
+    #dynamicFields select,
+    #dynamicFields input,
+    #dynamicFields textarea {
+      width: 100%;
+      min-height: 52px;
+      padding: 12px 14px;
+      color: #fff8ff;
+      border: 1px solid rgba(200, 153, 228, .32);
+      border-radius: 12px;
+      outline: 0;
+      background: linear-gradient(180deg, #100a16, #09060d);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+      font: 500 .76rem "Fira Code", monospace;
+      transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease);
+    }
+
+    #destinationFields select,
+    #dynamicFields select {
+      cursor: pointer;
+      color-scheme: dark;
+    }
+
+    #destinationFields textarea,
+    #dynamicFields textarea {
+      min-height: 112px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    #destinationFields :is(select, input, textarea):hover,
+    #dynamicFields :is(select, input, textarea):hover {
+      border-color: rgba(214, 171, 240, .56);
+      background: #120b18;
+    }
+
+    #destinationFields :is(select, input, textarea):focus-visible,
+    #dynamicFields :is(select, input, textarea):focus-visible {
+      border-color: var(--purple-300);
+      box-shadow: var(--focus);
+    }
+
+    #destinationFields select:disabled {
+      cursor: not-allowed;
+      color: var(--subtle);
+      opacity: .72;
+    }
+
+    #destinationFields .helper {
+      grid-column: 1 / -1;
+      margin-top: -3px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    #destinationFields .permission-card {
+      margin: 0;
+      border-color: rgba(101, 221, 176, .25);
+      background: rgba(101, 221, 176, .055);
+    }
+
+    @media (max-width: 620px) {
+      #destinationFields .case-search,
+      #dynamicFields .case-search { grid-template-columns: 1fr; }
+    }
+
