@@ -265,6 +265,13 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
   }
 
   function validate() {
+    const destination = selectedDestination();
+    const destinationReady = Boolean(destination && (
+      (destination.mode === 'members' && destination.members.length)
+      || (destination.mode === 'group' && (destination.groupId || destination.groupValue))
+    ));
+    form.classList.toggle('has-letter', Boolean(state.letter));
+    form.classList.toggle('has-case', Boolean(state.letter && destinationReady));
     try {
       const snapshot = collectSnapshot();
       reviewButton.disabled = false;
@@ -348,6 +355,8 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
 
   letterSelect.addEventListener('change', event => {
     state.letter = event.target.value;
+    form.classList.toggle('has-letter', Boolean(state.letter));
+    form.classList.remove('has-case');
     const letter = currentLetter();
     const preview = $('#selectedLetterPreview');
     preview.classList.toggle('visible', Boolean(letter)); preview.innerHTML = letter ? `<span>Carta selecionada</span><strong>${escapeHtml(letter.label)}</strong>` : '';
@@ -957,3 +966,4 @@ const CARTAS_ORIGINAIS = Object.freeze({
     form.addEventListener('submit', (event) => event.preventDefault());
     updateUi();
 }
+
