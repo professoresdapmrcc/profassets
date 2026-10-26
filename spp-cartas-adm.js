@@ -121,7 +121,7 @@ Enquanto a escala não estiver disponível, utilize os links essenciais para o s
   const options = Object.entries(LETTERS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('');
 
   root.innerHTML = `<a class="skip-link" href="#main">Ir para o formulário</a>
-  <div class="shell"><header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true"><img src="https://i.imgur.com/ioADcOs.gif" alt=""></div><div class="brand-copy"><strong>SPP CENTRAL DE ENVIOS</strong><span>Serviço de Proteção dos Professores</span></div></div></header>
+  <div class="shell"><header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true"><img src="https://i.imgur.com/ioADcOs.gif" alt=""></div><div class="brand-copy"><strong>SPP CENTRAL DE ENVIOS ADMINISTRATIVO</strong><span>Serviço de Proteção dos Professores</span></div></div></header>
   <div class="layout"><aside class="panel sidebar" aria-label="Etapas do formulário"><p class="eyebrow">Novo envio</p><h2>Fluxo da mensagem</h2><ol class="steps">
   <li class="step active" data-step="1"><span class="step-number">01</span><span><strong>Carta</strong><span>Escolha o modelo</span></span></li>
   <li class="step" data-step="2"><span class="step-number">02</span><span><strong>Destino</strong><span>Grupo ou membros</span></span></li>
