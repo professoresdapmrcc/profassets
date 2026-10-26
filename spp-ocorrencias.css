@@ -1042,6 +1042,15 @@ body {
       min-width: 0;
     }
 
+    #destinationFields .field.wide,
+    #dynamicFields .field.wide {
+      grid-column: 1 / -1;
+    }
+
+    #destinationFields .field[hidden] {
+      display: none;
+    }
+
     #destinationFields label,
     #dynamicFields label {
       color: #f6ecfa;
