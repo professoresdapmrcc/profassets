@@ -14,3 +14,25 @@ label{color:var(--muted);font-size:.61rem;font-weight:700}.pi-source-card label,
 @media(max-width:900px){.pi-grid-generate,.pi-settings-grid{grid-template-columns:1fr}.pi-header{align-items:flex-start;flex-direction:column}.pi-user{width:100%}}
 @media(max-width:767px){.pi-app{padding:16px}.pi-header,.pi-card{border-radius:18px}.pi-header{min-height:0;padding:24px}.pi-tabs{overflow:auto}.pi-tabs button{flex:0 0 auto}.pi-between{align-items:flex-start;flex-direction:column}.pi-actions{width:100%}.pi-actions button{flex:1}.pi-form-grid{grid-template-columns:1fr}.pi-span-2{grid-column:auto}.pi-inline-form{grid-template-columns:65px minmax(0,1fr)}.pi-inline-form .pi-primary{grid-column:1/-1}.pi-candidate{grid-template-columns:auto minmax(0,1fr)}.pi-candidate .pi-badge{grid-column:2}.pi-submit-bar{align-items:flex-start;flex-direction:column}.pi-submit-bar .pi-primary{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* Conferência legível e responsiva */
+#pi-app{font-size:16px;line-height:1.6}
+#pi-app .pi-header p,#pi-app .pi-help,#pi-app label,#pi-app input,#pi-app select,#pi-app textarea,#pi-app button{font-size:14px}
+#pi-app small,#pi-app .pi-candidate small,#pi-app .pi-user small{font-size:12px;line-height:1.6}
+#pi-app .pi-candidate strong,#pi-app .pi-user strong{font-size:15px}
+#pi-app .pi-candidate{padding:16px;gap:14px;min-height:88px;align-items:center}
+#pi-app .pi-candidate>div{min-width:0;overflow-wrap:anywhere}
+#pi-app input[type=checkbox]{width:20px;height:20px;min-height:20px;flex:0 0 20px;accent-color:var(--accent)}
+#pi-app .pi-highlight{border-left:4px solid var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--surface))}
+#pi-app .pi-highlight-reason{color:var(--accent);font-weight:700}
+#pi-app .pi-search{display:block;margin-bottom:18px}
+#pi-app .pi-search input{width:100%;margin-top:8px}
+#pi-app .pi-alert{position:relative;top:auto;font-size:14px;line-height:1.6}
+#pi-app .pi-submit-bar{gap:18px;background:var(--surface);border-top:1px solid var(--border);padding:18px}
+#pi-app .pi-badge{font-size:11px;white-space:normal;text-align:center}
+#pi-app #pi-extra-form{grid-template-columns:minmax(0,1fr) auto}
+#pi-app button{min-height:44px}
+#pi-app select option{background:var(--surface);color:var(--text)}
+#pi-app .pi-preview{max-height:65vh;overflow:auto;scrollbar-gutter:stable}
+@media(max-width:900px){#pi-app .pi-grid-generate{grid-template-columns:1fr}#pi-app .pi-source-card{position:static}#pi-app .pi-preview{max-height:none}}
+@media(max-width:600px){#pi-app{padding:12px}#pi-app .pi-card{padding:18px}#pi-app .pi-between,#pi-app .pi-submit-bar{flex-wrap:wrap}#pi-app .pi-submit-bar button{width:100%}#pi-app .pi-candidate{gap:10px}#pi-app .pi-tabs{overflow-x:auto}#pi-app .pi-tabs button{flex-shrink:0}}
+@media(prefers-reduced-motion:reduce){#pi-app *,#pi-loading{animation:none!important;transition:none!important}}
