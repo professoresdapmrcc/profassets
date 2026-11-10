@@ -684,7 +684,16 @@
   // ==========================================
   function decision(p, list, leaders){
       if(!list.length) return {key:'none', label:'Sem pareceres', status:'neutral'};
-      const leader = list.find(v => leaders.has(low(v.Nick||v.nick)));
+      // A primeira resposta pode ser um encaminhamento antigo. Use a decisão final mais recente.
+      const voteTime = v => {
+          const value=v.Timestamp??v.timestamp??v.criadoEm;
+          if(value&&typeof value.toMillis==='function') return value.toMillis();
+          if(value&&typeof value.seconds==='number') return value.seconds*1000+(value.nanoseconds||0)/1e6;
+          return Date.parse(value)||0;
+      };
+      const leader = list.map((v,index)=>({v,index}))
+          .filter(({v})=>leaders.has(low(v.Nick||v.nick)) && /^(aprovada|reprovada)$/.test(low(v.Veredito||v.veredito)))
+          .sort((a,b)=>voteTime(b.v)-voteTime(a.v)||b.index-a.index)[0]?.v;
       if(leader){
           const verdict = low(leader.Veredito||leader.veredito);
           if(verdict.includes('aprovada')) return {key:'approved', label:'Aprovada pela Liderança', status:'approved'};
@@ -807,6 +816,7 @@
   let savingForcedVote = false;
   window.abrirModalForcarVoto = function(ordem, backupId = null) {
       if (savingForcedVote) return;
+      if (!isLideranca()) { toast('Somente a Liderança pode forçar uma decisão.', 'error'); return; }
       let dialog = document.getElementById('force-vote-dialog');
       if (!dialog) {
           dialog = document.createElement('dialog');
@@ -853,11 +863,13 @@
 
   window.salvarVotoForcado = async function() {
       if (savingForcedVote) return;
+      if (!isLideranca()) { toast('Somente a Liderança pode forçar uma decisão.', 'error'); return; }
       const ordem = document.getElementById('forcar-ordem').value;
       const backupId = document.getElementById('forcar-backup').value;
       const veredito = document.getElementById('forcar-veredito').value;
       const comentario = document.getElementById('forcar-comentario').value.trim();
 
+      if (!Number.isSafeInteger(Number(ordem)) || Number(ordem)<1 || !['Aprovada','Reprovada'].includes(veredito)) { toast('Proposta ou veredito inválido.', 'error'); return; }
       if (!comentario) { toast("O comentário é obrigatório.", "error"); return; }
 
       const safeNick = state.nick.replace(/[^a-zA-Z0-9_]/g, '');
@@ -876,13 +888,14 @@
               await state.db.runTransaction(async tx => {
                   const doc = await tx.get(docRef);
                   if (!doc.exists) throw Error("Backup não encontrado.");
+                  if (!(doc.data().propostas||[]).some(p=>orderOf(p)===Number(ordem))) throw Error('Proposta não encontrada neste backup.');
                   let votos = doc.data().votos || [];
                   votos = votos.filter(v => !(voteOrder(v) === parseInt(ordem) && low(v.Nick || v.nick) === low(state.nick)));
                   votos.push(novoVoto);
                   const propostas=(doc.data().propostas||[]).map(proposta=>{
                       if(orderOf(proposta)!==parseInt(ordem)) return proposta;
-                      const result=decision(proposta,votos.filter(v=>voteOrder(v)===parseInt(ordem)),leaderNicks());
-                       if(result.key==='approved'||result.key==='rejected') return {...proposta,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:new Date().toISOString(),resolvidaAposFechamento:true};
+                      const result={key:veredito==='Aprovada'?'approved':'rejected',label:veredito==='Aprovada'?'Aprovada pela Liderança':'Reprovada pela Liderança'};
+                       if(result.key==='approved'||result.key==='rejected') return {...proposta,statusFinal:'resolvida',resultadoChave:result.key,resultadoFinal:result.label,resolvidaEmIso:new Date().toISOString(),resolvidaAposFechamento:true,decisaoForcadaPor:state.nick};
                       const updated={...proposta};
                       delete updated.statusFinal; delete updated.resultadoChave; delete updated.resultadoFinal; delete updated.resolvidaEmIso;
                       return updated;
