@@ -104,6 +104,37 @@
     return [...new Set(members.filter(Boolean).map(normalize))];
   }
 
+  const MEMBERS_STORAGE_KEY = 'FINANCAS_MEMBROS_ATIVOS_V1';
+  function sharedMembersStatus(saved=true){
+    const input=$('prof-ativos'); if(!input) return;
+    let status=$('active-members-status');
+    if(!status){
+      status=document.createElement('small'); status.id='active-members-status';
+      status.setAttribute('aria-live','polite'); input.insertAdjacentElement('afterend',status);
+    }
+    const count=extractActiveMembers(input.value).length;
+    status.textContent=clean(input.value)
+      ? (count ? `${count} membros reconhecidos. Lista compartilhada entre todos os cargos de desempenho.` : 'Lista não reconhecida. Cole a listagem do RCCSystem com as colunas de nickname e patente.')
+      : 'Sem lista: todos os membros da consulta serão considerados.';
+    status.textContent+=saved ? ' Salvo automaticamente neste navegador.' : ' Não foi possível salvar neste navegador; a lista vale somente nesta página.';
+  }
+  function saveSharedMembers(){
+    Object.values(state.performanceByView).forEach(saved=>{
+      saved.positive=[];saved.negative=[];saved.special=[];
+      saved.positivos='';saved.negativos='';saved.especiais='';
+    });
+    clearPerformanceResults();
+    let saved=true;
+    try{localStorage.setItem(MEMBERS_STORAGE_KEY,$('prof-ativos').value);}catch(_){saved=false;}
+    sharedMembersStatus(saved);
+  }
+  function loadSharedMembers(){
+    const input=$('prof-ativos'); if(!input) return;
+    let saved=true;
+    try{const value=localStorage.getItem(MEMBERS_STORAGE_KEY);if(value!==null)input.value=value;}catch(_){saved=false;}
+    sharedMembersStatus(saved);
+  }
+
   function performanceEntry(line){
     const statuses = /(CASO ESPECIAL|EXCELENTE|ÓTIMO|OTIMO|MELHOR|DESTAQUE|BOM|IRREGULAR|REGULAR|RUIM)/i, raw = line.trim(); if(!raw) return null;
     let nick = '', status = '';
@@ -115,6 +146,7 @@
   function processPerformance(){
     const performance = clean($('prof-desempenho').value); if(!performance){ toast('Cole a consulta de desempenho.','warning'); return; }
     const active = new Set(extractActiveMembers($('prof-ativos').value)), groups = {positive:[], negative:[], special:[]};
+    if(clean($('prof-ativos').value)&&!active.size){clearPerformanceResults();toast('A lista de ativos não foi reconhecida. Corrija a listagem antes de processar.','warning');return;}
     
     performance.split(/\r?\n/).forEach(line => {
         const entry = performanceEntry(line); if(!entry) return;
@@ -559,7 +591,6 @@
     if(!view||!PERFORMANCE_VIEWS[view]) return;
     const valueOf=id=>{ const field=$(id); return field?field.value:''; };
     state.performanceByView[view]={
-      ativos:valueOf('prof-ativos'),
       desempenho:valueOf('prof-desempenho'),
       positivos:valueOf('prof-positivos'),
       negativos:valueOf('prof-negativos'),
@@ -573,7 +604,6 @@
   function restorePerformanceView(view){
     const saved=state.performanceByView[view]||{ativos:'',desempenho:'',positivos:'',negativos:'',especiais:'',positive:[],negative:[],special:[]};
     const values={
-      'prof-ativos':saved.ativos,
       'prof-desempenho':saved.desempenho,
       'prof-positivos':saved.positivos,
       'prof-negativos':saved.negativos,
@@ -637,6 +667,8 @@
     });
 
     click('process-professores',processPerformance);
+    const activeInput=$('prof-ativos');
+    if(activeInput) activeInput.addEventListener('input',()=>saveSharedMembers());
     change('prof-cargo',updateCargoUI);
     click('post-prof-positivos',()=>addPerformanceDraft('positive'));
     click('post-prof-negativos',()=>addPerformanceDraft('negative'));
@@ -667,6 +699,7 @@
   async function init(){
     try{
       setupOfficialFlow();
+      loadSharedMembers();
       bind();
       loadDrafts();
       renderDrafts();
