@@ -433,7 +433,7 @@
               const unresolved=proposalList.filter(proposal=>needsLeadershipResolution(backupResult(proposal,voteList)));
               const complete=proposalList.length>0 && unresolved.length===0;
               const label=clean(backup.nome_backup||backup.data_formatada||backup.cicloId||backup.id);
-              return `<section class="previous-cycle-block"><div class="previous-cycle-header"><div><p class="eyebrow">Ciclo anterior</p><h3>${esc(label)}</h3><p>${unresolved.length?`${unresolved.length} proposta${unresolved.length===1?'':'s'} aguardando decisão final.`:'Todas as propostas estão resolvidas. O backup pode ser concluído.'}</p></div><div class="previous-cycle-actions"><span class="previous-cycle-status">${unresolved.length?'Pendente':'Pronto para concluir'}</span><button class="primary-button" type="button" onclick="completePreviousBackup('${esc(backup.id)}')" ${complete?'':'disabled'}><i class="ti ti-archive"></i> Gerar backup completo</button></div></div><div class="proposal-grid">${proposalList.map(proposal=>card(proposal,{backup:backup.id,votes:voteList,pendingCycle:true})).join('')}</div></section>`;
+              return `<section class="previous-cycle-block"><div class="previous-cycle-header"><div><p class="eyebrow">Ciclo anterior</p><h3>${esc(label)}</h3><p>${unresolved.length?`${unresolved.length} proposta${unresolved.length===1?'':'s'} aguardando decisão final.`:'Todas as propostas estão resolvidas. O backup pode ser concluído.'}</p></div><div class="previous-cycle-actions"><span class="previous-cycle-status">${unresolved.length?'Pendente':'Pronto para concluir'}</span><button class="primary-button" type="button" onclick="completePreviousBackup('${esc(backup.id)}')" ${complete?'':'disabled'}><i class="ti ti-archive"></i> Gerar backup completo</button></div></div><div class="proposal-grid">${proposalList.map(proposal=>card(proposal,{backup:backup.id,votes:votesFor(proposal,voteList),pendingCycle:true})).join('')}</div></section>`;
           }).join('');
   }
 
@@ -716,7 +716,7 @@
   }
 
   function card(p, opt={}){
-      const list = opt.votes || votesFor(p), calculated = decision(p, list, leaderNicks()), result = p.statusFinal==='resolvida'&&p.resultadoFinal ? {key:clean(p.resultadoChave||calculated.key),label:clean(p.resultadoFinal),status:p.resultadoChave==='approved'?'approved':p.resultadoChave==='rejected'?'rejected':calculated.status} : calculated, order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
+      const list = votesFor(p, opt.votes || state.votes), calculated = decision(p, list, leaderNicks()), result = p.statusFinal==='resolvida'&&p.resultadoFinal ? {key:clean(p.resultadoChave||calculated.key),label:clean(p.resultadoFinal),status:p.resultadoChave==='approved'?'approved':p.resultadoChave==='rejected'?'rejected':calculated.status} : calculated, order = orderOf(p), title = clean(p.titulo||p.Titulo||'Sem tema'), author = clean(p.autor||p.Autor||'Não informado'), type = clean(p.tipo||p.Categoria||'Proposta'), content = clean(p.conteudo||p.Conteudo||'Nenhum conteúdo detalhado.'), encoded = encodeURIComponent(JSON.stringify(list)), action = opt.backup ? `removeHistory('${esc(opt.backup)}','${esc(idOf(p))}',${order})` : `removeActive('${esc(idOf(p))}',${order})`;
       
       // BOTÃO DA LIDERANÇA
       let btnForcar = '';
@@ -804,7 +804,9 @@
   // ==========================================
   // MODAL FORÇAR VOTO (LIDERANÇA)
   // ==========================================
+  let savingForcedVote = false;
   window.abrirModalForcarVoto = function(ordem, backupId = null) {
+      if (savingForcedVote) return;
       let dialog = document.getElementById('force-vote-dialog');
       if (!dialog) {
           dialog = document.createElement('dialog');
@@ -836,7 +838,7 @@
                   </div>
                   <footer>
                       <button class="secondary-button" type="button" onclick="document.getElementById('force-vote-dialog').close()">Cancelar</button>
-                      <button onclick="salvarVotoForcado()" class="primary-button" type="button"><i class="ti ti-hammer"></i> Decretar Veredito</button>
+                      <button id="save-forced-vote" onclick="salvarVotoForcado()" class="primary-button" type="button"><i class="ti ti-hammer"></i> Decretar Veredito</button>
                   </footer>
               </div>
           `;
@@ -850,6 +852,7 @@
   };
 
   window.salvarVotoForcado = async function() {
+      if (savingForcedVote) return;
       const ordem = document.getElementById('forcar-ordem').value;
       const backupId = document.getElementById('forcar-backup').value;
       const veredito = document.getElementById('forcar-veredito').value;
@@ -861,8 +864,11 @@
       const votoId = `voto_${ordem}_${safeNick}`;
       const novoVoto = { Nick: state.nick, Ordem: parseInt(ordem), Comentario: comentario, Veredito: veredito, Timestamp: new Date().toISOString() };
 
-      document.getElementById('force-vote-dialog').close();
-      toast("Forçando veredito...", "info");
+      const dialog = document.getElementById('force-vote-dialog');
+      const button = document.getElementById('save-forced-vote');
+      savingForcedVote = true;
+      busy(button, true, 'Salvando…');
+      let saved = false;
 
       try {
           if (backupId) {
@@ -871,7 +877,7 @@
                   const doc = await tx.get(docRef);
                   if (!doc.exists) throw Error("Backup não encontrado.");
                   let votos = doc.data().votos || [];
-                  votos = votos.filter(v => !(parseInt(v.Ordem) === parseInt(ordem) && low(v.Nick || v.nick) === low(state.nick)));
+                  votos = votos.filter(v => !(voteOrder(v) === parseInt(ordem) && low(v.Nick || v.nick) === low(state.nick)));
                   votos.push(novoVoto);
                   const propostas=(doc.data().propostas||[]).map(proposta=>{
                       if(orderOf(proposta)!==parseInt(ordem)) return proposta;
@@ -883,14 +889,35 @@
                   });
                    tx.update(docRef,{votos,propostas,quantidadeVotos:votos.length,backupCompleto:false,statusBackup:'pendente',resultadosAtualizadosEm:ts(),resultadosAtualizadosPor:state.nick});
               });
-              toast("Resultado alterado no cofre de backup!", "success");
-              await loadBackups(backupId);
+
           } else {
               await votes().doc(votoId).set({ ...novoVoto, Timestamp: ts() });
-              toast("Resultado ativo alterado com sucesso!", "success");
+
           }
+          saved = true;
       } catch (err) {
-          console.error(err); toast("Erro ao forçar decisão.", "error");
+          console.error('Falha ao gravar decisão:', err);
+          toast("Não foi possível salvar a decisão. Tente novamente.", "error");
+      } finally {
+          if (!saved) {
+              savingForcedVote = false;
+              busy(button, false);
+          }
+      }
+      if (!saved) return;
+      try {
+          dialog.close();
+          if (backupId) {
+              await loadBackups(backupId);
+              renderPreviousCycles();
+          }
+          toast(backupId ? "Resultado alterado no cofre de backup!" : "Resultado ativo alterado com sucesso!", "success");
+      } catch (err) {
+          console.error('Decisão salva; falha ao atualizar a visualização:', err);
+          toast("Decisão salva. Não foi possível atualizar a visualização; recarregue a página. Não é necessário forçar novamente.", "warning");
+      } finally {
+          savingForcedVote = false;
+          busy(button, false);
       }
   };
 
