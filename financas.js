@@ -5,14 +5,13 @@
   // ==========================================
   // CONFIGURAÇÕES GLOBAIS
   // ==========================================
-  const TOPIC_ID_PERFORMANCE = '36745'; 
-  const TOPIC_ID_GRUPOS = '36766'; 
+  const COFRE_URL = 'https://www.policiarcc.com/h17-postagem-de-medalhas-af'; 
   const FIXED_GROUP = 'Professores';
   const DRAFT_STORAGE_KEY = 'FINANCAS_PROF_RASCUNHOS_V3';
-  const LEADERSHIP_BASE_DAYS = 30;
+
   const LEADERSHIP_BASE_MEDALS = 65;
-  const FORUM_POST_INTERVAL_MS = 15000;
-  const FORUM_MAX_ATTEMPTS = 4;
+
+
   const CARGO_CONFIG = Object.freeze({Professor:10, Coordenador:10, Graduador:25, Estagiário:15, Conselheiro:15});
   const PERFORMANCE_VIEWS = Object.freeze({
     professores:{cargo:'Professor', label:'Professores', display:'Professor(a)'},
@@ -83,10 +82,11 @@
   function saveDrafts(){ localStorage.setItem(DRAFT_STORAGE_KEY,JSON.stringify(state.drafts)); renderDrafts(); }
 
   function addDraft(payload, origin){
-    const signature = [payload.responsible, payload.cargo, payload.nicks, payload.medals, payload.periodText].map(normalize).join('|');
+    payload.motive = payload.motive || (payload.medals > 0 ? 'meta' : 'nao-meta');
+    const signature = [payload.motive, origin, payload.responsible, payload.cargo, payload.nicks, payload.medals, payload.periodText].map(normalize).join('|');
     if(state.drafts.some(i => i.signature === signature)){ toast('Esse lançamento já está no rascunho.', 'warning'); return false; }
     state.drafts.push({id:draftId(), signature, origin, createdAt:new Date().toISOString(), ...payload}); saveDrafts();
-    toast(`${payload.cargo} adicionado à fila de envios.`, 'success'); return true;
+    toast(`${payload.cargo} adicionado aos rascunhos para o cofre.`, 'success'); return true;
   }
 
   // ==========================================
@@ -105,10 +105,10 @@
   }
 
   function performanceEntry(line){
-    const statuses = /(CASO ESPECIAL|EXCELENTE|ÓTIMO|OTIMO|BOM|REGULAR|IRREGULAR|RUIM)/i, raw = line.trim(); if(!raw) return null;
+    const statuses = /(CASO ESPECIAL|EXCELENTE|ÓTIMO|OTIMO|MELHOR|DESTAQUE|BOM|IRREGULAR|REGULAR|RUIM)/i, raw = line.trim(); if(!raw) return null;
     let nick = '', status = '';
     if(raw.includes('\t')){ const cols=raw.split('\t').map(clean); nick=cols[0]; for(let i=cols.length-1; i>=1; i--){ const m=cols[i].match(statuses); if(m){ status=m[1]; break; } } }
-    else{ const m=raw.match(/(.*?)(CASO ESPECIAL|EXCELENTE|ÓTIMO|OTIMO|BOM|REGULAR|IRREGULAR|RUIM)/i); if(m){ nick=m[1]; status=m[2]; } }
+    else{ const m=raw.match(/(.*?)(CASO ESPECIAL|EXCELENTE|ÓTIMO|OTIMO|MELHOR|DESTAQUE|BOM|IRREGULAR|REGULAR|RUIM)/i); if(m){ nick=m[1]; status=m[2]; } }
     nick = clean(nick).replace(/[^a-zA-Z0-9_.:\-?!,]/g,''); return nick && status ? {nick, status:normalize(status)} : null;
   }
 
@@ -119,7 +119,7 @@
     performance.split(/\r?\n/).forEach(line => {
         const entry = performanceEntry(line); if(!entry) return;
         if(active.size && !active.has(normalize(entry.nick))) return;
-        if(['excelente','otimo','bom','regular'].includes(entry.status)) groups.positive.push(entry.nick);
+        if(['excelente','otimo','melhor','destaque','bom','regular'].includes(entry.status)) groups.positive.push(entry.nick);
         else if(['irregular','ruim'].includes(entry.status)) groups.negative.push(entry.nick);
         else if(entry.status==='caso especial') groups.special.push(entry.nick);
     });
@@ -161,17 +161,23 @@
 
   function calculateLeadership(){
     const data = requiredPostingData('lider'); if(!data) return;
-    const entries = [];
+    const start=parseIso(data.start), end=parseIso(data.end);
+    if(start.getMonth()!==end.getMonth()||start.getFullYear()!==end.getFullYear()){toast('Selecione um único mês de referência para a liderança.','warning');return;}
+    const monthDays=new Date(start.getFullYear(),start.getMonth()+1,0).getDate();
+    const entries = [];let invalid=false;
     document.querySelectorAll('.leader-row').forEach(row => {
-        const nick=clean(row.querySelector('.leader-nick').value), role=clean(row.querySelector('.leader-role').value)||'Líder', days=Math.max(0,Number(row.querySelector('.leader-days').value)||0);
-        if(!nick||!days) return;
-        entries.push({nick, role, days, medals:Math.round(days*LEADERSHIP_BASE_MEDALS/LEADERSHIP_BASE_DAYS)});
+        const nick=clean(row.querySelector('.leader-nick').value), role=clean(row.querySelector('.leader-role').value)||'Líder', days=Number(row.querySelector('.leader-days').value);
+        if(!nick) return;
+        if(!Number.isFinite(days)||!Number.isInteger(days)||days<0||days>monthDays){invalid=true;return;}
+        if(!days)return;
+        entries.push({nick, role, days, medals:Math.round(days*LEADERSHIP_BASE_MEDALS/monthDays)});
     });
+    if(invalid){toast(`Os dias ativos devem ser inteiros entre 0 e ${monthDays}.`,'warning');return;}
     if(!entries.length){ toast('Preencha os dados de liderança.','warning'); return; }
     
     $('leader-results').innerHTML = entries.map((e, idx) => `
       <article class="leader-card"><header><div><h3>${esc(e.nick)}</h3><small>${esc(e.role)}</small></div><i class="ti ti-medal"></i></header>
-      <strong class="medal-total">+${e.medals}</strong><p>${e.days} dia(s) × ${LEADERSHIP_BASE_MEDALS} ÷ ${LEADERSHIP_BASE_DAYS} = ${e.medals} medalhas</p>
+      <strong class="medal-total">+${e.medals}</strong><p>${e.days} dia(s) × ${LEADERSHIP_BASE_MEDALS} ÷ ${monthDays} = ${e.medals} medalhas</p>
       <button class="success-button draft-leader" type="button" data-index="${idx}"><i class="ti ti-notes"></i> Adicionar ao rascunho</button></article>`
     ).join('');
     
@@ -187,7 +193,7 @@
   // ==========================================
   function getMetaPeriodoMes(mesNome) {
       const meses = {'Janeiro':{m:0,'a':'Jan'}, 'Fevereiro':{m:1,'a':'Fev'}, 'Março':{m:2,'a':'Mar'}, 'Abril':{m:3,'a':'Abr'}, 'Maio':{m:4,'a':'Mai'}, 'Junho':{m:5,'a':'Jun'}, 'Julho':{m:6,'a':'Jul'}, 'Agosto':{m:7,'a':'Ago'}, 'Setembro':{m:8,'a':'Set'}, 'Outubro':{m:9,'a':'Out'}, 'Novembro':{m:10,'a':'Nov'}, 'Dezembro':{m:11,'a':'Dez'}};
-      const ano = new Date().getFullYear(), inf = meses[mesNome];
+      const ano = Number($('grupos-ano')?.value)||new Date().getFullYear(), inf = meses[mesNome];
       if(!inf) return `Mês de ${mesNome}`;
       const ud = new Date(ano, inf.m + 1, 0).getDate();
       return `01 ${inf.a} ${ano} até ${ud} ${inf.a} ${ano}`;
@@ -268,16 +274,16 @@
           const chaves = Object.keys(dados).map(Number).sort((a,b) => b - a);
           if (chaves.length > 0) {
               gerou = true;
-              let html = `<div style="background: rgba(0,0,0,0.3); border-left: 4px solid #a855f7; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
-                          <h4 style="color: #a855f7; margin-top: 0; margin-bottom: 15px;">${sub}</h4>`;
+              let html = `<div class="finance-subgroup">
+                          <h4 class="finance-subgroup-title">${sub}</h4>`;
               chaves.forEach(qtd => {
                   const cor = qtd > 0 ? '#10b981' : '#ef4444';
                   html += `<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
                               <div style="flex: 1; padding-right: 15px;">
                                   <span style="display: block; color: ${cor}; font-weight: bold; font-size: 0.85rem;">${qtd > 0 ? '+' : ''}${qtd} MEDALHAS</span>
-                                  <span style="color: #ccc; font-family: monospace; font-size: 0.85rem;">${dados[qtd].join(' / ')}</span>
+                                  <span class="finance-subgroup-nicks">${dados[qtd].join(' / ')}</span>
                               </div>
-                              <button type="button" class="btn-nexus" style="background: ${cor}; color: white; border:none; padding:8px 15px; border-radius:8px; cursor:pointer;" onclick="window.addGrupoDraft('${sub}', ${qtd})">
+                              <button type="button" class="secondary-button" onclick="window.addGrupoDraft('${sub}', ${qtd})">
                                   <i class="ti ti-notes"></i> Adicionar
                               </button>
                            </div>`;
@@ -352,7 +358,7 @@
   }
 
   function draftSignature(item){
-    return [item.responsible, item.cargo, item.nicks, item.medals, item.periodText].map(normalize).join('|');
+    return [item.motive||'', item.origin, item.responsible, item.cargo, item.nicks, item.medals, item.periodText].map(normalize).join('|');
   }
 
   function draftNickList(value){
@@ -384,6 +390,7 @@
     $('edit-draft-period').value = item.periodText;
     $('edit-draft-medals').value = item.medals;
     $('edit-draft-nicks').value = item.nicks;
+    $('edit-draft-motive').value=item.motive||(item.medals>0?'meta':'nao-meta');
     dialog.showModal();
   }
 
@@ -394,6 +401,7 @@
     const old = state.drafts[index], medals = Number($('edit-draft-medals').value);
     const candidate = {
       ...old,
+      motive:$('edit-draft-motive').value,
       responsible:clean($('edit-draft-responsible').value),
       cargo:clean($('edit-draft-cargo').value),
       periodText:clean($('edit-draft-period').value),
@@ -401,15 +409,21 @@
       nicks:draftNickList($('edit-draft-nicks').value).join(' / '),
       positive:medals > 0
     };
-    if(!candidate.responsible || !candidate.cargo || !candidate.periodText || !candidate.nicks || !Number.isFinite(medals) || medals === 0){
+    if(!candidate.responsible || !candidate.cargo || !candidate.periodText || !candidate.nicks || !Number.isInteger(medals) || medals === 0){
       toast('Preencha todos os campos e informe uma quantidade diferente de zero.', 'warning');
       return;
     }
-    if(candidate.origin === 'grupos' && medals > 20){
+    const fixed={rebaixamento:-50,saida:-50,expulsao:-100};
+    if(fixed[candidate.motive])candidate.medals=fixed[candidate.motive];
+    if(candidate.motive==='infracao')candidate.medals=-Math.abs(medals);
+    if(candidate.motive==='meta'&&candidate.medals<1){toast('Cumprimento de meta exige valor positivo.','warning');return;}
+    if(candidate.motive==='nao-meta')candidate.medals=-Math.abs(medals);
+    candidate.positive=candidate.medals>0;
+    if(candidate.motive==='meta' && candidate.origin === 'grupos' && medals > 20){
       toast('Em um único subgrupo, a quantidade positiva não pode ultrapassar 20 medalhas.', 'warning');
       return;
     }
-    const limitError = validateGroupDraftLimit(candidate, id);
+    const limitError = candidate.motive==='meta'?validateGroupDraftLimit(candidate, id):'';
     if(limitError){ toast(limitError, 'error'); return; }
     candidate.signature = draftSignature(candidate);
     if(state.drafts.some(item => item.id !== id && item.signature === candidate.signature)){
@@ -441,8 +455,9 @@
       <header><div><h3>${index}. ${esc(nomeParaExibir)}</h3><p>Grupo: ${item.origin==='grupos'?'Grupos Internos':FIXED_GROUP}</p></div>
       <strong class="draft-medals">${Number(item.medals)>0?'+':''}${Number(item.medals)}</strong></header>
       <div class="draft-details"><span>Responsável <strong>${esc(item.responsible)}</strong></span><span>Período <strong>${esc(item.periodText)}</strong></span></div>
+      <p class="cofre-help">Motivo: ${esc(MOTIVES[item.motive]||MOTIVES[item.medals>0?'meta':'nao-meta'])}${['nao-meta','rebaixamento','saida','expulsao'].includes(item.motive|| (item.medals>0?'meta':'nao-meta'))?' · Valor definido pelo formulário oficial':''}</p>
       <p class="draft-nicks">${esc(item.nicks)}</p>
-      <div class="draft-actions">
+      ${cofreActions(item)}<div class="draft-actions">
         <button class="secondary-button preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-eye"></i> Visualizar</button>
         <button class="secondary-button edit-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-pencil"></i> Editar</button>
         <button class="danger-button remove-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button>
@@ -459,6 +474,7 @@
     let position = 0;
     $('draft-grid').innerHTML = groupedDrafts(state.drafts).map(group => `<section class="draft-group" data-group="${group.key}"><header class="draft-group-header"><div><span>${esc(group.label)}</span><small>${group.items.length} ${group.items.length===1?'postagem':'postagens'}</small></div></header><div class="draft-group-items">${group.items.map(item => draftCard(item, ++position)).join('')}</div></section>`).join('');
     
+    bindCofreActions($('draft-grid'));
     document.querySelectorAll('.remove-draft').forEach(b=>b.onclick=()=>removeDraft(b.dataset.id));
     document.querySelectorAll('.edit-draft').forEach(b=>b.onclick=()=>openDraftEditor(b.dataset.id));
     document.querySelectorAll('.preview-draft').forEach(b=>b.onclick=()=> openPreview([b.dataset.id]));
@@ -470,9 +486,10 @@
     let position = 0;
     $('preview-list').innerHTML = groupedDrafts(selected).map(group => `<section class="preview-group"><header class="preview-group-header"><strong>${esc(group.label)}</strong><small>${group.items.length} ${group.items.length===1?'postagem separada':'postagens separadas'}</small></header>${group.items.map(item => {
       const nomeParaExibir = item.origin === 'grupos' ? `Grupo Interno (${item.cargo})` : item.cargo;
-      return `<article class="preview-item"><header><h3>Postagem ${++position} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(medalBBCode(item))}</pre><div class="preview-item-actions"><button class="secondary-button edit-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-pencil"></i> Editar</button><button class="danger-button remove-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button></div></article>`;
+      return `<article class="preview-item"><header><h3>Postagem ${++position} · ${esc(nomeParaExibir)}</h3><span>${Number(item.medals)>0?'+':''}${Number(item.medals)} medalhas</span></header><pre>${esc(`Grupo: ${FIXED_GROUP}\n${item.origin==='grupos'?'Subgrupo':'Cargo'}: ${item.cargo}\nMotivo: ${MOTIVES[item.motive]||MOTIVES[item.medals>0?'meta':'nao-meta']}\nPeríodo: ${item.periodText}\nResponsável: ${item.responsible}\nPoliciais: ${item.nicks}`)}</pre>${cofreActions(item)}<div class="preview-item-actions"><button class="secondary-button edit-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-pencil"></i> Editar</button><button class="danger-button remove-preview-draft" type="button" data-id="${esc(item.id)}"><i class="ti ti-trash"></i> Excluir</button></div></article>`;
     }).join('')}</section>`).join('');
-    $('send-all-drafts').hidden = Array.isArray(ids); 
+    $('send-all-drafts').hidden = true; 
+    bindCofreActions($('preview-list'));
     $('preview-dialog').showModal();
     document.querySelectorAll('.edit-preview-draft').forEach(button => button.onclick=()=>{
       $('preview-dialog').close();
@@ -481,98 +498,35 @@
     document.querySelectorAll('.remove-preview-draft').forEach(button => button.onclick=()=>removeDraft(button.dataset.id, !$('send-all-drafts').hidden));
   }
 
-  // ENVIO PRO FÓRUM SOMENTE (Sem salvar no Firebase local)
-  function wait(milliseconds){ return new Promise(resolve => setTimeout(resolve, milliseconds)); }
-
-  function forumResponseError(html, finalUrl, topicID){
-    const plain = clean(html).replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/\s+/g,' ');
-    if(/\/(login|login_register|connexion)/i.test(finalUrl) || /você deve estar conectado|you must be logged/i.test(plain)) return {message:'Sua sessão do fórum expirou.', retry:false};
-    if(/flood|mensagem tão rapidamente|mensagem tao rapidamente|aguarde.+antes de enviar|esperar.+segundos|wait.+seconds/i.test(plain)) return {message:'O Forumeiros ativou a proteção entre postagens.', retry:true};
-    if(/tópico bloqueado|topico bloqueado|não tem permissão|nao tem permissao|não pode responder|nao pode responder/i.test(plain)) return {message:'O tópico está bloqueado ou sua conta não tem permissão para responder.', retry:false};
-    return null;
+  const MOTIVES={meta:'Cumprimento de meta','nao-meta':'Não cumprimento de meta',rebaixamento:'Rebaixamento',saida:'Saída precoce',expulsao:'Expulsão',infracao:'Infração',correcao:'Correção de medalhas'};
+  function officialLink(item){
+    const motive=item.motive|| (item.medals>0?'meta':'nao-meta');
+    if(!MOTIVES[motive])throw Error('Selecione um motivo válido.');
+    if(!clean(item.cargo)||!clean(item.periodText)||!clean(item.nicks))throw Error('Complete cargo/subgrupo, período e policiais.');
+    const value=Number(item.medals);if(!Number.isInteger(value)||value===0)throw Error('Informe medalhas inteiras diferentes de zero.');
+    if(motive==='meta'&&value<0)throw Error('Cumprimento de meta exige valor positivo.');
+    const url=new URL(COFRE_URL);
+    const params={grupo:FIXED_GROUP,motivo:motive,periodo:item.periodText,policiais:draftNickList(item.nicks).join(' / '),responsavel:item.responsible};
+    params[item.origin==='grupos'?'subgrupo':'cargo']=item.cargo;
+    if(!['nao-meta','rebaixamento','saida','expulsao'].includes(motive))params.medalhas=String(motive==='infracao'?Math.abs(value):value);
+    Object.entries(params).forEach(([key,value])=>{if(clean(value))url.searchParams.set(key,value);});return url.href;
   }
-
-  async function topicSnapshot(topicID){
-    const response = await fetch(`/t${topicID}-?view=newest&_=${Date.now()}`, {credentials:'same-origin', cache:'no-store', redirect:'follow'});
-    const html = await response.text();
-    const rejected = forumResponseError(html, response.url, topicID);
-    if(!response.ok) throw Object.assign(Error(`Não foi possível conferir o tópico ${topicID} (HTTP ${response.status}).`), {retry:false});
-    if(rejected) throw Object.assign(Error(rejected.message), {retry:false});
-    const ids = [];
-    for(const pattern of [
-      /\bid=["']p(\d+)["']/gi,
-      /\bid=["']post[-_]?(\d+)["']/gi,
-      /\bdata-post-id=["'](\d+)["']/gi,
-      /\bname=["'](\d+)["']/gi,
-      /\/p(\d+)(?:[-/?#]|$)/gi,
-      /\/t\d+(?:p\d+)?-[^"'\s#]+#(\d+)/gi
-    ]){
-      let match;
-      while((match = pattern.exec(html)) !== null) ids.push(Number(match[1]));
-    }
-    return {latestPostID:ids.length ? Math.max(...ids) : 0, html, finalUrl:response.url};
+  function cofreActions(item){
+    try{return `<div class="cofre-actions"><a class="primary-button open-cofre" data-id="${esc(item.id)}" href="${esc(officialLink(item))}" target="_blank" rel="noopener noreferrer">Abrir formulário do cofre</a><button type="button" class="secondary-button copy-cofre" data-id="${esc(item.id)}">Copiar link</button></div><small class="cofre-help">Confira os dados e conclua a postagem no formulário oficial. Abrir o link não envia nem apaga este rascunho.</small>`;}
+    catch(error){return `<p class="cofre-help">${esc(error.message)} Edite este rascunho.</p>`;}
   }
-
-  async function forumSubmit(item){
-    const topicID = item.origin === 'grupos' ? TOPIC_ID_GRUPOS : TOPIC_ID_PERFORMANCE;
-    const before = await topicSnapshot(topicID);
-    let lastError = null;
-    for(let attempt=1; attempt<=FORUM_MAX_ATTEMPTS; attempt++){
-      const body = new URLSearchParams({t:topicID, message:medalBBCode(item), mode:'reply', post:'Enviar'});
-      try{
-        const response = await fetch('/post', {method:'POST', credentials:'same-origin', cache:'no-store', redirect:'follow', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body.toString()});
-        const html = await response.text();
-        if(!response.ok) throw Object.assign(Error(`O fórum respondeu com HTTP ${response.status}.`), {retry:response.status>=500||response.status===429});
-        const rejected = forumResponseError(html, response.url, topicID);
-        if(rejected) throw Object.assign(Error(rejected.message), {retry:rejected.retry});
-        await wait(900);
-        const after = await topicSnapshot(topicID);
-        if(after.latestPostID > before.latestPostID) return {topicID, finalUrl:after.finalUrl, postID:after.latestPostID};
-        throw Object.assign(Error(`O envio terminou, mas nenhuma nova postagem apareceu no tópico ${topicID}. O rascunho foi preservado para conferência.`), {retry:false});
-      }catch(error){
-        lastError = error;
-        if(error.retry !== true || attempt === FORUM_MAX_ATTEMPTS) break;
-        await wait(FORUM_POST_INTERVAL_MS);
-      }
-    }
-    throw lastError || Error('O fórum não confirmou a postagem.');
+  function bindCofreActions(container){
+    container.querySelectorAll('.copy-cofre').forEach(button=>button.onclick=async()=>{
+      const item=state.drafts.find(d=>d.id===button.dataset.id);if(!item)return;
+      try{await navigator.clipboard.writeText(officialLink(item));toast('Link copiado.','success');}catch(error){toast('Não foi possível copiar. Use o botão Abrir formulário do cofre.','warning');}
+    });
   }
-
-  async function sendAllDrafts(){
-    if(state.posting||!state.drafts.length) return; 
-    const button=$('send-all-drafts'), queue=groupedDrafts(state.drafts).flatMap(group=>group.items);
-    state.posting=true; setBusy(button,true,`Enviando 0/${queue.length}…`); 
-    let sent=0; const failed=[];
-
-    try{
-      for(let index=0; index<queue.length; index++){
-          const item=queue[index];
-          if(index>0){
-            button.innerHTML = `<span class="button-loader"></span>Aguardando proteção do fórum · ${index}/${queue.length}`;
-            await wait(FORUM_POST_INTERVAL_MS);
-          }
-          button.innerHTML = `<span class="button-loader"></span>Enviando ${index+1}/${queue.length} · ${esc(item.cargo)}…`;
-          try{
-          await forumSubmit(item);
-          sent++; 
-          state.drafts = state.drafts.filter(d => d.id !== item.id); 
-          saveDrafts();
-          }catch(error){
-            console.error(`Falha ao publicar o rascunho ${item.id}:`,error);
-            failed.push({item,error});
-            toast(`${item.cargo}: ${error.message} O rascunho foi mantido.`, 'error');
-          }
-      }
-      $('preview-dialog').close();
-      if(!failed.length){
-        toast(`Pronto! As ${sent} postagens foram confirmadas pelo fórum.`, 'success');
-      }else{
-        toast(`${sent} de ${queue.length} postagens confirmadas. ${failed.length} permaneceram nos rascunhos para nova tentativa.`, 'warning');
-      }
-    }finally{
-      state.posting=false; setBusy(button,false);
-      renderDrafts();
-    }
+  function setupOfficialFlow(){
+    const yearBase=$('grupos-mes');if(yearBase&&!$('grupos-ano')){const label=document.createElement('label');label.className='field';label.innerHTML=`<span>Ano de referência</span><input id="grupos-ano" type="number" min="2000" max="2100" value="${new Date().getFullYear()}">`;yearBase.closest('label')?.after(label);}
+    const form=$('edit-draft-form');if(form&&!$('edit-draft-motive')){const label=document.createElement('label');label.className='field';label.innerHTML='<span>Motivo da postagem</span><select id="edit-draft-motive">'+Object.entries(MOTIVES).map(([v,t])=>`<option value="${v}">${t}</option>`).join('')+'</select>';const target=form.querySelector('.edit-draft-fields')||form;target.append(label);}
+    const send=$('send-all-drafts');if(send){send.hidden=true;send.disabled=true;}
+    const review=$('review-drafts');if(review)review.textContent='Conferir formulários';
+    const chip=document.querySelector('.formula-chip');if(chip)chip.innerHTML='<strong>65</strong><span>Base mensal atual · proporcional aos dias ativos no mês. Confira o limite do cargo no formulário oficial.</span>';
   }
 
   // ==========================================
@@ -702,7 +656,7 @@
     });
     click('close-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
     click('cancel-preview',()=>{ const dialog=$('preview-dialog'); if(dialog) dialog.close(); });
-    click('send-all-drafts',sendAllDrafts);
+
     click('close-edit-draft',()=>{ const dialog=$('edit-draft-dialog'); if(dialog) dialog.close(); });
     click('cancel-edit-draft',()=>{ const dialog=$('edit-draft-dialog'); if(dialog) dialog.close(); });
     const editDraftForm=$('edit-draft-form'); if(editDraftForm) editDraftForm.addEventListener('submit',saveDraftEdit);
@@ -712,6 +666,7 @@
 
   async function init(){
     try{
+      setupOfficialFlow();
       bind();
       loadDrafts();
       renderDrafts();
@@ -728,7 +683,7 @@
       const saturday=new Date(sunday); saturday.setDate(sunday.getDate()+6);
       const values={
         'prof-inicio':toIsoDate(sunday),'prof-fim':toIsoDate(saturday),
-        'lider-inicio':toIsoDate(sunday),'lider-fim':toIsoDate(saturday)
+        'lider-inicio':toIsoDate(new Date(today.getFullYear(),today.getMonth(),1)),'lider-fim':toIsoDate(new Date(today.getFullYear(),today.getMonth()+1,0))
       };
       Object.entries(values).forEach(([id,value])=>{ const input=$(id); if(input) input.value=value; });
 
