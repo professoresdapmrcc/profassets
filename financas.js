@@ -105,6 +105,18 @@
   }
 
   const MEMBERS_STORAGE_KEY = 'FINANCAS_MEMBROS_ATIVOS_V1';
+  function setupMembersView(){
+    if($('view-listagem'))return;
+    const input=$('prof-ativos'), nav=document.querySelector('.sidebar-nav'), page=document.querySelector('.page');
+    if(!input||!nav||!page)return;
+    const section=document.createElement('section');section.id='view-listagem';section.className='view';section.hidden=true;
+    section.innerHTML='<header class="hero"><div><p class="eyebrow">Primeiro passo</p><h1>Importar listagem.</h1><p>Cole a listagem completa do RCCSystem uma vez para usar em todos os cargos de desempenho.</p></div></header><section class="panel"><header class="panel-header"><h2>Membros ativos</h2></header><div id="members-import-fields"></div><p>A lista fica salva neste navegador. Substitua o conteúdo quando houver mudanças; apague para remover o filtro.</p><button class="primary-button" type="button" data-view="professores">Continuar para Professores</button></section>';
+    page.prepend(section);
+    $('members-import-fields').append(input.closest('label'));
+    const status=$('active-members-status');if(status)$('members-import-fields').append(status);
+    const button=document.createElement('button');button.className='nav-item';button.type='button';button.dataset.view='listagem';
+    button.innerHTML='<i class="ti ti-users"></i><span>Importar listagem</span>';nav.prepend(button);
+  }
   function sharedMembersStatus(saved=true){
     const input=$('prof-ativos'); if(!input) return;
     let status=$('active-members-status');
@@ -182,13 +194,23 @@
   // ABA 2: LIDERANÇA
   // ==========================================
   function leadershipDays(){ return inclusiveDays($('lider-inicio').value, $('lider-fim').value); }
-  function syncLeaderDays(){ const days=leadershipDays(); if(days) document.querySelectorAll('.leader-days').forEach(i=>i.value=days); }
+  function selectedMonthDays(){
+    const start=parseIso($('lider-inicio').value);
+    return start?new Date(start.getFullYear(),start.getMonth()+1,0).getDate():0;
+  }
+  function syncLeaderDays(){
+    const days=leadershipDays(), monthDays=selectedMonthDays();
+    document.querySelectorAll('.leader-days').forEach(i=>{if(days)i.value=days;if(monthDays)i.max=monthDays;});
+    const chip=document.querySelector('.formula-chip');
+    if(chip&&monthDays)chip.innerHTML=`<strong>${monthDays} dias</strong><span>Mês identificado automaticamente · ${LEADERSHIP_BASE_MEDALS} medalhas por mês completo.</span>`;
+  }
   
   function addLeaderRow(values={}){
     const row = document.createElement('tr'); row.className = 'leader-row';
     row.innerHTML = `<td><input class="leader-nick" type="text" placeholder="Nickname" value="${esc(values.nick||'')}"></td><td><input class="leader-role" type="text" placeholder="Ex.: Líder" value="${esc(values.role||'Líder')}"></td><td><input class="leader-days" type="number" min="1" max="366" value="${Number(values.days)||leadershipDays()||30}"></td><td><button class="remove-row" type="button" title="Remover"><i class="ti ti-trash"></i></button></td>`;
     row.querySelector('.remove-row').onclick = () => row.remove();
     $('leader-rows').append(row);
+    row.querySelector('.leader-days').max=selectedMonthDays()||31;
   }
 
   function calculateLeadership(){
@@ -639,7 +661,7 @@
     if(performance) selectPerformanceView(view);
     document.querySelectorAll('.view').forEach(section=>{ section.hidden=section!==target; });
     document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));
-    const labels={lideranca:'Cálculo da Liderança',grupos:'Grupos Internos',rascunhos:'Rascunhos e envio'};
+    const labels={listagem:'Importar listagem',lideranca:'Cálculo da Liderança',grupos:'Grupos Internos',rascunhos:'Rascunhos e envio'};
     const pageLabel=$('page-label'), selectedCargo=$('selected-cargo-label'), sidebar=$('sidebar'), stage=document.querySelector('.stage');
     if(pageLabel) pageLabel.textContent=performance?`Desempenho · ${performance.label}`:(labels[view]||'Central de Finanças');
     if(selectedCargo) selectedCargo.textContent=performance?performance.display:(view==='lideranca'?'Liderança':view==='grupos'?'Grupos Internos':'Todos os cargos');
@@ -699,6 +721,7 @@
   async function init(){
     try{
       setupOfficialFlow();
+      setupMembersView();
       loadSharedMembers();
       bind();
       loadDrafts();
@@ -721,9 +744,10 @@
       Object.entries(values).forEach(([id,value])=>{ const input=$(id); if(input) input.value=value; });
 
       addLeaderRow();
+      syncLeaderDays();
       const initialView=location.hash.slice(1);
-      const validInitialView=Boolean(PERFORMANCE_VIEWS[initialView]||['lideranca','grupos','rascunhos'].includes(initialView));
-      navigate(validInitialView?initialView:'professores');
+      const validInitialView=Boolean(PERFORMANCE_VIEWS[initialView]||['listagem','lideranca','grupos','rascunhos'].includes(initialView));
+      navigate(extractActiveMembers($('prof-ativos').value).length&&validInitialView?initialView:'listagem');
     }catch(error){
       console.error('Falha ao preparar a Central de Finanças:',error);
       navigate('professores');
