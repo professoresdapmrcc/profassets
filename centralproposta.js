@@ -422,7 +422,12 @@
           panel.className='panel';
           grid.closest('.panel').after(panel);
       }
-      const currentOrders=new Set(activeProposals().map(orderOf));
+      const previousCycleIds=new Set(incompleteBackups().flatMap(backup=>[clean(backup.cicloId),clean(backup.id)]).filter(Boolean));
+      const currentProposals=state.cycle ? state.proposals.filter(proposal=>
+          activeProposals().some(active=>orderOf(active)===orderOf(proposal)) ||
+          (proposal.cicloId!==state.cycle.id && !previousCycleIds.has(clean(proposal.cicloId)))
+      ) : [];
+      const currentOrders=new Set(currentProposals.map(orderOf));
       const pendingBackups=incompleteBackups().map(backup=>({
           ...backup,
           visibleProposals:(Array.isArray(backup.propostas)?backup.propostas:[]).filter(proposal=>!currentOrders.has(orderOf(proposal)))
