@@ -340,7 +340,8 @@
   function activeProposals(){
       if(!state.cycle) return [];
       const previousCycleIds=new Set(incompleteBackups().flatMap(backup=>[clean(backup.cicloId),clean(backup.id)]).filter(Boolean));
-      return state.proposals.filter(p => p.cicloId===state.cycle.id && !previousCycleIds.has(clean(p.carregadoDoCiclo)));
+      const archivedOrders=new Set(Array.from(state.backups.values()).flatMap(backup=>(backup.propostas||[]).map(orderOf)));
+      return state.proposals.filter(p => p.cicloId===state.cycle.id && !p.aguardandoDecisaoFinal && !archivedOrders.has(orderOf(p)) && !previousCycleIds.has(clean(p.carregadoDoCiclo)));
   }
   function votesFor(p, list=state.votes){ return list.filter(v => voteOrder(v)===orderOf(p)); }
 
@@ -743,7 +744,8 @@
       const q = low(state.search), list = activeProposals().filter(p => !q || [orderOf(p), p.autor, p.titulo, p.tipo].some(v => low(v).includes(q)));
       $('proposal-grid').innerHTML = list.length ? list.map(p => card(p)).join('') : '<div class="empty"><i class="ti ti-file-off"></i><h3>Nenhuma proposta encontrada</h3></div>';
       const previousCycleIds=new Set(incompleteBackups().flatMap(backup=>[clean(backup.cicloId),clean(backup.id)]).filter(Boolean));
-      const queued = state.cycle ? state.proposals.filter(p => p.cicloId!==state.cycle.id && !previousCycleIds.has(clean(p.cicloId)) && (!q || [orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)))) : [];
+      const archivedOrders=new Set(Array.from(state.backups.values()).flatMap(backup=>(backup.propostas||[]).map(orderOf)));
+      const queued = state.cycle ? state.proposals.filter(p => !archivedOrders.has(orderOf(p)) && !p.aguardandoDecisaoFinal && p.cicloId!==state.cycle.id && !previousCycleIds.has(clean(p.cicloId)) && (!q || [orderOf(p),p.autor,p.titulo,p.tipo].some(v=>low(v).includes(q)))) : [];
       $('proposal-count').textContent = `${list.length} no ciclo atual${queued.length ? ` · ${queued.length} fora do ciclo` : ''}`;
       let panel=$('queued-proposals-panel');
       if(!panel){ panel=document.createElement('section'); panel.id='queued-proposals-panel'; panel.className='panel'; $('proposal-grid').closest('.panel').after(panel); }

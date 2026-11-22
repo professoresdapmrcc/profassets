@@ -518,6 +518,8 @@
         data: data.data ?? data.Data,
       };
     }).filter(item => item.ordem).sort((a, b) => b.ordem - a.ordem);
+    const available = await availableProposalIds();
+    S.proposals = S.proposals.filter(item => available.has(item.id));
     S.proposalVotes = proposalVotesSnap.docs.map(dataOf);
     S.licenses = licensesSnap?.docs?.map(dataOf) || [];
     S.cycle = cycleSnap?.exists ? cycleSnap.data() : null;
@@ -1292,6 +1294,29 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     finally { S.busy = false; }
   }
 
+  function proposalAvailable(item, cycle, archivedOrders) {
+    return Boolean(cycle?.id && cycle.status === 'aberto' && item.cicloId === cycle.id
+      && !item.aguardandoDecisaoFinal && item.statusFinal !== 'resolvida'
+      && !archivedOrders.has(Number(item.ordem ?? item.Ordem ?? item.id)));
+  }
+
+  async function availableProposalIds() {
+    const root = S.db.collection('nexus_config').doc('Propostas');
+    const [cycle, proposals, backups] = await Promise.all([
+      root.collection('configuracoes').doc('ciclo_atual').get(),
+      root.collection('lista_propostas').get(),
+      S.db.collection('nexus_config').doc('backup_respostas').collection('historico').get(),
+    ]);
+    const archived = new Set(backups.docs.flatMap(doc => (doc.data().propostas || []).map(p => Number(p.ordem ?? p.Ordem ?? p.id))));
+    return new Set(proposals.docs.map(dataOf).filter(p => proposalAvailable(p, cycle.data(), archived)).map(p => p.id));
+  }
+
+  async function assertAvailableProposals(items) {
+    if (!items.length) return;
+    const available = await availableProposalIds();
+    if (items.some(item => !available.has(item.id))) throw new Error('Uma proposta já saiu do ciclo de votação. Atualize a Central; pendências arquivadas são decididas pela Liderança.');
+  }
+
   async function submitProposal(event, item) {
     event.preventDefault();
     if (S.busy) return;
@@ -1301,6 +1326,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
     try {
       await S.saveQueue;
       await confirmForumUser();
+      await assertAvailableProposals([item]);
       const id = `voto_${item.ordem}_${S.nick.replace(/[^a-zA-Z0-9_]/g, '')}`;
       const ref = S.db.collection('nexus_config').doc('Propostas').collection('votos_conselho').doc(id);
       const current = ownProposalVote(item) || {};
@@ -1357,6 +1383,7 @@ Todos os estagiários e conselheiros têm a obrigação de realizar a avaliaçã
       await S.saveQueue;
       await confirmForumUser();
       const batch = S.db.batch();
+      await assertAvailableProposals(drafts.filter(entry => entry.kind === 'proposal').map(entry => entry.item));
       drafts.forEach(({ kind, item }) => {
         const current = kind === 'promotion' ? ownPromotionVote(item) : ownProposalVote(item);
         const draft = current.rascunho;
