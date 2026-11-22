@@ -422,16 +422,20 @@
           panel.className='panel';
           grid.closest('.panel').after(panel);
       }
-      const pendingBackups=incompleteBackups();
+      const currentOrders=new Set(activeProposals().map(orderOf));
+      const pendingBackups=incompleteBackups().map(backup=>({
+          ...backup,
+          visibleProposals:(Array.isArray(backup.propostas)?backup.propostas:[]).filter(proposal=>!currentOrders.has(orderOf(proposal)))
+      })).filter(backup=>backup.visibleProposals.length);
       panel.hidden=!pendingBackups.length;
       panel.style.display=pendingBackups.length?'':'none';
       if(!pendingBackups.length){ panel.innerHTML=''; return; }
       panel.innerHTML=`<header class="panel-header"><div><p class="eyebrow">Acompanhamento</p><h2>Pendentes de ciclos anteriores</h2><p>Estas propostas permanecem separadas por semana até a decisão final da Liderança.</p></div></header>`+
           pendingBackups.map(backup=>{
-              const proposalList=Array.isArray(backup.propostas)?backup.propostas:[];
+              const proposalList=backup.visibleProposals;
               const voteList=Array.isArray(backup.votos)?backup.votos:[];
               const unresolved=proposalList.filter(proposal=>needsLeadershipResolution(backupResult(proposal,voteList)));
-              const complete=proposalList.length>0 && unresolved.length===0;
+              const complete=proposalList.length>0 && unresolved.length===0 && proposalList.length===(backup.propostas||[]).length;
               const label=clean(backup.nome_backup||backup.data_formatada||backup.cicloId||backup.id);
               return `<section class="previous-cycle-block"><div class="previous-cycle-header"><div><p class="eyebrow">Ciclo anterior</p><h3>${esc(label)}</h3><p>${unresolved.length?`${unresolved.length} proposta${unresolved.length===1?'':'s'} aguardando decisão final.`:'Todas as propostas estão resolvidas. O backup pode ser concluído.'}</p></div><div class="previous-cycle-actions"><span class="previous-cycle-status">${unresolved.length?'Pendente':'Pronto para concluir'}</span><button class="primary-button" type="button" onclick="completePreviousBackup('${esc(backup.id)}')" ${complete?'':'disabled'}><i class="ti ti-archive"></i> Gerar backup completo</button></div></div><div class="proposal-grid">${proposalList.map(proposal=>card(proposal,{backup:backup.id,votes:votesFor(proposal,voteList),pendingCycle:true})).join('')}</div></section>`;
           }).join('');
