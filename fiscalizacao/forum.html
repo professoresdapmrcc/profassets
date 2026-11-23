@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="pt-BR" class="" data-theme="light"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROF · Central de Fiscalização</title>
+
+    <link rel="icon" href="https://professoresdapmrcc.github.io/profassets/fiscalizacao/assets/emblema.png" type="image/png">
+    
+    
+
+    
+    
+    <link href="https://professoresdapmrcc.github.io/profassets/fiscalizacao/assets/tipografia.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://professoresdapmrcc.github.io/profassets/fiscalizacao/assets/fontawesome.css">
+    
+
+    
+<link rel="stylesheet" href="https://professoresdapmrcc.github.io/profassets/assistencia.css">
+<link rel="stylesheet" href="https://professoresdapmrcc.github.io/profassets/fiscalizacao/fiscalizacao.css"><script src="https://professoresdapmrcc.github.io/profassets/fiscalizacao/assets/jquery.min.js" defer=""></script><script src="https://professoresdapmrcc.github.io/profassets/fiscalizacao/acesso-fiscalizacao.js" defer=""></script><script src="https://professoresdapmrcc.github.io/profassets/fiscalizacao/fluxo.js" defer=""></script><script src="https://professoresdapmrcc.github.io/profassets/fiscalizacao/fiscalizacao.js" defer=""></script></head>
+
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-800 dark:bg-[#020617] dark:text-slate-300 transition-colors duration-300">
+
+    <nav class="fc-topbar"><a class="fc-brand" href="#"><span id="fc-logo"><img id="logo-professores" src="https://professoresdapmrcc.github.io/profassets/fiscalizacao/assets/emblema.png" alt="Emblema dos Professores" class="w-10 h-10 object-contain drop-shadow-md group-hover:scale-110 transition-transform duration-500 cursor-pointer pl-1"></span><span><strong>PROFESSORES</strong><small>Central de Fiscalização</small></span></a><div class="fc-account"><span id="fc-session-status">Verificando acesso</span><span id="fc-user">Usuário do fórum</span><small id="fc-role">Consultando NEXUS</small></div><button id="fc-theme" class="fc-icon" type="button" aria-label="Alternar tema"><i class="fa-solid fa-moon" aria-hidden="true"></i></button></nav>
+
+    <main class="fc-main"><header class="fc-hero"><div><span class="fc-eyebrow">Companhia dos Professores</span><h1>Fiscalização de membros</h1><p>Importe a listagem do System e confira os membros da Companhia.</p></div><a href="https://www.policiarcc.com/t32243-prof-requerimentos-da-companhia" target="_blank" rel="noopener noreferrer" class="fc-button"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Requerimentos</a></header><div id="fc-preview" class="fc-note" hidden="">Prévia visual · nenhuma postagem ou gravação será enviada.</div><div id="fc-access" class="fc-note" role="status">Conferindo sua sessão e os grupos autorizados…</div><div id="fc-workspace" hidden=""><div id="fc-content"><section id="fc-prepare" class="fc-panel-view"><div id="progresso-fontes" class="fc-readiness">0/4 fontes prontas</div><div class="w-full max-w-3xl mx-auto mb-8 animate-fade-in fc-source-main" style="animation-delay: 0.1s;">
+            <div class="card-standard group relative rounded-2xl p-1 overflow-hidden shadow-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 opacity-90"></div>
+                <div class="p-6 md:p-8">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-inner shrink-0">
+                                <i class="fa-solid fa-clipboard-list text-3xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base md:text-lg font-black text-slate-800 dark:text-slate-100 tracking-tight">Listagem do System</h3>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Basta clicar no botão de copiar na página de Gratificações e colar aqui.
+                                </p>
+                            </div>
+                        </div>
+                        <a href="https://system.policercc.com.br/listagens/gratificacoes" target="_blank" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-xs font-bold text-amber-700 dark:text-amber-300 border border-amber-300/40 dark:border-amber-500/30 transition-all self-start sm:self-center shadow-sm" rel="noopener noreferrer">
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[11px]"></i> Abrir Gratificações
+                        </a>
+                    </div>
+
+                    <textarea id="lista-gratificacoes" aria-label="Listagem de gratificações" aria-describedby="status-gratificacoes" spellcheck="false" class="input-standard w-full h-44 rounded-xl p-4 font-mono text-xs md:text-sm text-slate-700 dark:text-slate-300 focus:outline-none resize-none custom-scrollbar transition-all" placeholder="Cole aqui a listagem copiada das Gratificações do System..."></textarea>
+
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                        <div id="status-gratificacoes" class="source-status" aria-live="polite">
+                            <i class="fa-regular fa-circle"></i> Aguardando dados
+                        </div>
+                        <div class="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-check text-purple-400 text-[11px]"></i>
+                            Os 3 subfóruns são sincronizados e atualizados automaticamente
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Barra de Ações Rápidas dos Subfóruns -->
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-2">
+                <div id="status-sincronizacao-forum" class="flex items-center text-xs font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
+                    <span id="texto-status-forum"><span class="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse mr-1.5"></span>Sincronizando grupos do fórum automaticamente...</span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <!-- Botão para ver membros importados -->
+                    <button type="button" id="btn-ver-membros-forum" class="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 text-xs font-bold flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]">
+                        <i class="fa-solid fa-users-viewfinder text-purple-600 dark:text-purple-400"></i>
+                        <span>Ver membros importados</span>
+                        <span id="badge-total-membros-importados" class="px-1.5 py-0.5 rounded-md bg-purple-200/80 dark:bg-purple-800/60 text-[10px] font-black">0</span>
+                    </button>
+
+                    <!-- Botão discreto para alternar campos manuais caso dê erro -->
+                    <button type="button" id="btn-toggle-edicao-manual" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all" title="Caso a importação automática apresente falha, abra os campos para colar as listas manualmente">
+                        <i class="fa-solid fa-sliders text-slate-500"></i>
+                        <span id="texto-btn-toggle-manual">Inserir listas manualmente</span>
+                        <i id="icone-chevron-manual" class="fa-solid fa-chevron-down text-[10px] transition-transform duration-300"></i>
+                    </button>
+                </div>
+            </div>
+        </div><div id="container-subforuns-manual" class="hidden mb-10 animate-fade-in">
+            <div class="max-w-6xl mx-auto p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5"></i>
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-800 dark:text-slate-200">Entrada Manual de Listas dos Subfóruns</h4>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            Use estes campos apenas se a importação automática do fórum falhar ou caso precise colar manualmente as listas dos 3 grupos.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <button type="button" id="btn-re-sincronizar-manual" class="text-xs text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 font-bold px-2.5 py-1.5 rounded-xl border border-amber-500/30 hover:bg-amber-500/10 transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> Tentar importar do fórum
+                    </button>
+                    <button type="button" id="btn-fechar-edicao-manual" class="text-xs text-slate-400 hover:text-slate-200 font-bold px-2.5 py-1.5 rounded-xl hover:bg-slate-800/50 transition-all">
+                        <i class="fa-solid fa-xmark"></i> Ocultar
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 2. Subfórum Professores -->
+                <div class="card-standard group relative rounded-2xl p-1 overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-violet-600 opacity-80"></div>
+                    <div class="p-5 flex flex-col h-full">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-inner shrink-0">
+                                <i class="fa-solid fa-chalkboard-user text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-xs md:text-sm text-slate-800 dark:text-slate-100">Professores</h4>
+                                <a href="https://www.policiarcc.com/g10-professores" target="_blank" class="text-[10px] text-purple-600 dark:text-purple-400 hover:underline font-bold flex items-center gap-1" rel="noopener noreferrer">
+                                    <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i> Abrir
+                                </a>
+                            </div>
+                        </div>
+                        <textarea id="lista-forum-professores" autocomplete="off" aria-label="Membros do subfórum Professores" aria-describedby="status-forum-professores" spellcheck="false" class="input-standard w-full h-36 rounded-xl p-3 font-mono text-xs text-slate-700 dark:text-slate-300 focus:outline-none resize-none custom-scrollbar" placeholder="Cole os membros de Professores..."></textarea>
+                        <div id="status-forum-professores" class="source-status mt-2" aria-live="polite">
+                            <i class="fa-regular fa-circle"></i> Aguardando dados
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Subfórum Coordenadores -->
+                <div class="card-standard group relative rounded-2xl p-1 overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-400 to-rose-500 opacity-80"></div>
+                    <div class="p-5 flex flex-col h-full">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-xl bg-pink-100 dark:bg-pink-500/10 flex items-center justify-center text-pink-600 dark:text-pink-400 shadow-inner shrink-0">
+                                <i class="fa-solid fa-user-tie text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-xs md:text-sm text-slate-800 dark:text-slate-100">Coordenadores</h4>
+                                <a href="https://www.policiarcc.com/g458-coordenadores-dos-professores" target="_blank" class="text-[10px] text-pink-600 dark:text-pink-400 hover:underline font-bold flex items-center gap-1" rel="noopener noreferrer">
+                                    <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i> Abrir
+                                </a>
+                            </div>
+                        </div>
+                        <textarea id="lista-forum-coordenadores" autocomplete="off" aria-label="Membros do subfórum Coordenadores" aria-describedby="status-forum-coordenadores" spellcheck="false" class="input-standard w-full h-36 rounded-xl p-3 font-mono text-xs text-slate-700 dark:text-slate-300 focus:outline-none resize-none custom-scrollbar" placeholder="Cole os membros de Coordenadores..."></textarea>
+                        <div id="status-forum-coordenadores" class="source-status mt-2" aria-live="polite">
+                            <i class="fa-regular fa-circle"></i> Aguardando dados
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Subfórum Graduadores -->
+                <div class="card-standard group relative rounded-2xl p-1 overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-700 to-indigo-900 opacity-80"></div>
+                    <div class="p-5 flex flex-col h-full">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-200 dark:bg-purple-800/30 flex items-center justify-center text-purple-800 dark:text-purple-300 shadow-inner shrink-0">
+                                <i class="fa-solid fa-graduation-cap text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-xs md:text-sm text-slate-800 dark:text-slate-100">Graduadores</h4>
+                                <a href="https://www.policiarcc.com/g231-graduadores-dos-professores" target="_blank" class="text-[10px] text-purple-700 dark:text-purple-300 hover:underline font-bold flex items-center gap-1" rel="noopener noreferrer">
+                                    <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i> Abrir
+                                </a>
+                            </div>
+                        </div>
+                        <textarea id="lista-forum-graduadores" autocomplete="off" aria-label="Membros do subfórum Graduadores" aria-describedby="status-forum-graduadores" spellcheck="false" class="input-standard w-full h-36 rounded-xl p-3 font-mono text-xs text-slate-700 dark:text-slate-300 focus:outline-none resize-none custom-scrollbar" placeholder="Cole os membros de Graduadores..."></textarea>
+                        <div id="status-forum-graduadores" class="source-status mt-2" aria-live="polite">
+                            <i class="fa-regular fa-circle"></i> Aguardando dados
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><div id="container-verificar" class="flex justify-center mb-12 animate-fade-in-up" style="animation-delay: 0.2s;">
+            <button id="botaoVerificar" type="button" class="btn btn-primary px-10 py-5 rounded-2xl text-lg font-black flex items-center gap-4 shadow-xl shadow-primary/20 hover:shadow-primary/40 disabled:opacity-70 disabled:cursor-wait min-w-[280px] justify-center transition-all duration-500 hover:-translate-y-1">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span class="tracking-tight">INICIAR VERIFICAÇÃO</span>
+            </button>
+        </div><div id="carregador" class="hidden flex flex-col items-center justify-center py-16 animate-fade-in-up text-center">
+            <div class="relative mb-8">
+                <div class="spinner w-20 h-20 border-4 border-slate-200 dark:border-slate-800 border-t-primary dark:border-t-primary rounded-full animate-spin">
+                </div>
+                <div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full animate-pulse"></div>
+            </div>
+            <h3 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Analisando Dados</h3>
+            <p id="status-processo" role="status" aria-live="polite" class="text-slate-500 dark:text-slate-400 mt-2 font-mono text-xs uppercase tracking-widest opacity-70">
+                Iniciando análise...</p>
+            <p class="text-slate-400 dark:text-slate-500 mt-4 text-xs italic max-w-sm mx-auto">
+                <i class="fa-solid fa-circle-info mr-1 opacity-70"></i>
+                Isso pode demorar alguns segundos, pois estamos consultando e comparando os dados com a API do Habbo em
+                tempo real.
+            </p>
+        </div></section><section id="fc-results"><div id="container-resultados" class="hidden animate-fade-in-up">
+
+            <div role="tablist" aria-label="Categorias da fiscalização" class="flex flex-wrap p-2 gap-1 mb-8 bg-slate-100/50 dark:bg-slate-900/40 rounded-3xl border border-slate-200/60 dark:border-slate-800/60 shadow-inner fc-category-grid">
+                <button onclick="alternarTab('inativos')" id="tab-inativos" type="button" role="tab" aria-selected="true" aria-controls="content-inativos" class="tab-btn active px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-user-xmark text-base"></i> Inativos
+                    <span id="badge-count-inativos" class="bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-purple-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('graduacao')" id="tab-graduacao" type="button" role="tab" aria-selected="false" aria-controls="content-graduacao" class="tab-btn px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-user-graduate text-base"></i> Graduação
+                    <span id="badge-count-graduacao" class="bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-purple-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('offline')" id="tab-offline" type="button" role="tab" aria-selected="false" aria-controls="content-offline" class="tab-btn px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-clock text-base"></i> Offline
+                    <span id="badge-count-offline" class="bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-purple-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('perfil-irregular')" id="tab-perfil-irregular" type="button" role="tab" aria-selected="false" aria-controls="content-perfil-irregular" class="tab-btn hidden px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-user-lock text-base"></i> Perfil irregular
+                    <span id="badge-count-perfil-irregular" class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-amber-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('remover-forum')" id="tab-remover-forum" type="button" role="tab" aria-selected="false" aria-controls="content-remover-forum" class="tab-btn hidden px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-user-slash text-base"></i> Fórum
+                    <span id="badge-count-remover-forum" class="bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-purple-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('retirar-grupos')" id="tab-retirar-grupos" type="button" role="tab" aria-selected="false" aria-controls="content-retirar-grupos" class="tab-btn hidden px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-users-slash text-base"></i> Grupos
+                    <span id="badge-count-retirar-grupos" class="bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-purple-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('outros')" id="tab-outros" type="button" role="tab" aria-selected="false" aria-controls="content-outros" class="tab-btn hidden px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-people-arrows text-base"></i> Conflitos
+                    <span id="badge-count-outros" class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-amber-500/20 font-mono">0</span>
+                </button>
+                <button onclick="alternarTab('erros')" id="tab-erros" type="button" role="tab" aria-selected="false" aria-controls="content-erros" class="tab-btn hidden px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2.5 transition-all">
+                    <i class="fa-solid fa-triangle-exclamation text-base"></i> Erros
+                    <span id="badge-count-erros" class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-lg shadow-lg shadow-red-500/20 font-mono animate-pulse">0</span>
+                </button>
+            </div>
+
+            <div id="content-inativos" class="tab-content">
+
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-purple-50 dark:bg-purple-950/20 px-6 py-4 border-b border-purple-100 dark:border-purple-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-purple-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                                <i class="fa-solid fa-user-xmark"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-purple-700 dark:text-purple-400">Inativos</h3>
+                        </div>
+                        <span id="contador-inativos" class="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <ul id="lista-inativos" class="grid grid-cols-1 gap-4"></ul>
+
+                        <div id="acoes-inativos" class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 hidden justify-end">
+                            <button onclick="abrirModal('req-inativos')" class="btn bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-purple-500/20 flex items-center gap-2">
+                                <i class="fa-solid fa-file-export"></i> Gerar Postagens de Saída
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-graduacao" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-purple-50 dark:bg-purple-950/20 px-6 py-4 border-b border-purple-100 dark:border-purple-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-purple-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                                <i class="fa-solid fa-user-graduate"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2">
+                                Graduação Pendente
+                                <i class="fa-solid fa-circle-info text-xs text-purple-400/70 cursor-help" title="Membros com mais de 7 dias sem registro de graduação."></i>
+                            </h3>
+                        </div>
+                        <span id="contador-graduacao" class="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-triangle-exclamation mt-1"></i>
+                            <p><strong>Cuidado com dados desatualizados:</strong> A listagem oficial pode não ter sido
+                                atualizada em tempo real. Para evitar erros, confirme se o membro realmente não graduou
+                                olhando os <strong>Relatórios de Graduação</strong>. Se a quinzena mudou recentemente,
+                                lembre-se de checar os <strong>Backups</strong> também.</p>
+                        </div>
+                        <ul id="lista-graduacao" class="grid grid-cols-1 gap-4"></ul>
+
+                        <div id="acoes-graduacao" class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 hidden justify-end">
+                            <button onclick="abrirModal('req-grad')" class="btn bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-purple-500/20 flex items-center gap-2">
+                                <i class="fa-solid fa-gavel"></i> Gerar Punições
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-offline" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-purple-50 dark:bg-purple-950/20 px-6 py-4 border-b border-purple-100 dark:border-purple-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-purple-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                                <i class="fa-solid fa-clock"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2">
+                                Membros Offline
+                                <i class="fa-solid fa-circle-info text-xs text-purple-500/60 cursor-help" title="Membros que não entram no jogo há 5 dias ou mais."></i>
+                            </h3>
+                        </div>
+                        <span id="contador-offline" class="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-triangle-exclamation mt-1"></i>
+                            <p><strong>Cuidado com erros da API:</strong> O Habbo pode demorar para atualizar o "Último
+                                Acesso". Sempre <strong>visite o perfil do membro</strong> no jogo para ter certeza.
+                                Além disso, pesquise nos <strong>Requerimentos</strong> se ele não postou nada
+                                recentemente ou se está de <strong>Licença</strong>, para evitar punir alguém
+                                injustamente.</p>
+                        </div>
+
+                        <ul id="lista-offline" class="grid grid-cols-1 gap-4"></ul>
+
+                        <div id="acoes-offline" class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 hidden justify-end">
+                            <button onclick="abrirModal('actions-offline')" class="btn bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-purple-500/20 flex items-center gap-2">
+                                <i class="fa-solid fa-gavel"></i> Gerar Ações
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-perfil-irregular" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-amber-50 dark:bg-amber-950/20 px-6 py-4 border-b border-amber-100 dark:border-amber-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-amber-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-amber-500/30">
+                                <i class="fa-solid fa-user-lock"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                                Perfis irregulares
+                                <i class="fa-solid fa-circle-info text-xs text-amber-500/60 cursor-help" title="Membros com o último acesso oculto por perfil privado ou visibilidade desativada."></i>
+                            </h3>
+                        </div>
+                        <span id="contador-perfil-irregular" class="bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 px-3 py-1 rounded-full text-xs font-bold border border-amber-200 dark:border-amber-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-hourglass-half mt-1"></i>
+                            <p><strong>Por que estes membros aparecem aqui?</strong> A visibilidade desativada impede a
+                                conferência do último acesso. Confirme a irregularidade no perfil do Habbo e envie a
+                                <strong>MP de aviso</strong>. O sistema registrará o envio e aguardará <strong>24 horas</strong>.
+                                Se o perfil continuar privado após o prazo, será liberada a punição correspondente ao cargo.</p>
+                        </div>
+
+                        <ul id="lista-perfil-irregular" class="grid grid-cols-1 gap-4"></ul>
+
+                        <div id="acoes-perfil-irregular" class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 hidden justify-end">
+                            <button onclick="abrirModal('actions-perfil-irregular')" class="btn bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-rose-500/20 flex items-center gap-2">
+                                <i class="fa-solid fa-gavel"></i> Gerar punições vencidas
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-remover-forum" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-purple-50 dark:bg-purple-950/20 px-6 py-4 border-b border-purple-100 dark:border-purple-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-purple-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                                <i class="fa-solid fa-user-slash"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-purple-700 dark:text-purple-400">Remover do Subfórum</h3>
+                        </div>
+                        <span id="contador-remover-forum" class="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-info-circle mt-1"></i>
+                            <p><strong>Atenção:</strong> Estes nicks estão no subfórum, mas não constam na listagem.
+                                <strong>Não remova todos automaticamente!</strong> Verifique se o membro entrou
+                                recentemente. Caso a saída seja verídica, remova-o <strong>manualmente</strong> do
+                                fórum.
+                            </p>
+                        </div>
+
+                        <ul id="lista-remover-forum" class="grid grid-cols-1 gap-4"></ul>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-retirar-grupos" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-purple-50 dark:bg-purple-950/20 px-6 py-4 border-b border-purple-100 dark:border-purple-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-purple-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                                <i class="fa-solid fa-users-slash"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-purple-700 dark:text-purple-400">Retirar dos Grupos do Habbo
+                            </h3>
+                        </div>
+                        <span id="contador-retirar-grupos" class="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-info-circle mt-1"></i>
+                            <p><strong>Atenção:</strong> Estes nicks estão nos grupos do Habbo
+                                (Professores/Graduadores), mas <u>não
+                                    constam na listagem dos professores</u>. Verifique se devem ser removidos dos
+                                grupos. Se houver nicks importantes reconhecidos, avise a liderança ou o desenvolvedor.
+                            </p>
+                        </div>
+
+                        <ul id="lista-retirar-grupos" class="grid grid-cols-1 gap-4"></ul>
+
+                        <div id="secao-imunes" class="hidden mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                            <details class="group">
+                                <summary class="flex items-center gap-2 cursor-pointer list-none select-none">
+                                    <i class="fa-solid fa-chevron-right text-emerald-500 text-xs transition-transform group-open:rotate-90"></i>
+                                    <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+                                    <h4 class="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                                        Membros Imunes</h4>
+                                    <span id="contador-imunes" class="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
+                                </summary>
+                                <div class="mt-4">
+                                    <div class="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 p-3 rounded-xl mb-4 flex gap-3 text-xs">
+                                        <i class="fa-solid fa-shield-check mt-0.5"></i>
+                                        <p>Estes membros estão na <strong>Corregedoria</strong>, <strong>GATE</strong>
+                                            ou são <strong>contas especiais</strong>. Não devem ser removidos.</p>
+                                    </div>
+                                    <ul id="lista-imunes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+
+                        <div id="secao-subgrupos" class="hidden mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                            <div class="flex items-center gap-2 mb-4">
+                                <i class="fa-solid fa-bell text-amber-500"></i>
+                                <h4 class="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                                    Avisar Líderes dos Subgrupos</h4>
+                                <span id="contador-subgrupos" class="bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
+                            </div>
+                            <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-3 rounded-xl mb-4 flex gap-3 text-xs">
+                                <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                                <p>Estes membros constam em <strong>subgrupos</strong> (Serviço de Proteção dos
+                                    Professores, Departamento de Aplicação ou Comissão de Desenvolvimento Cultural) sem
+                                    serem professores. Notifique as lideranças sobre a situação nos <strong>Grupos do
+                                        Habbo</strong> e <strong>subfóruns</strong>.</p>
+                            </div>
+                            <ul id="lista-subgrupos" class="grid grid-cols-1 gap-3"></ul>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-outros" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-amber-300 dark:border-amber-800 shadow-xl overflow-hidden">
+                    <div class="bg-amber-50 dark:bg-amber-950/20 px-6 py-4 border-b border-amber-200 dark:border-amber-900/40 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-amber-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-amber-500/30">
+                                <i class="fa-solid fa-people-arrows"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-amber-800 dark:text-amber-300">Conflitos</h3>
+                        </div>
+                        <span id="contador-outros" class="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 px-3 py-1 rounded-full text-xs font-bold border border-amber-300 dark:border-amber-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <details class="group bg-red-50 dark:bg-red-950/20 border-2 border-red-300 dark:border-red-800 text-red-900 dark:text-red-100 rounded-xl mb-6">
+                            <summary class="cursor-pointer list-none select-none p-5 flex items-center gap-3">
+                                <span class="w-9 h-9 shrink-0 rounded-lg bg-red-600 text-white flex items-center justify-center shadow-lg shadow-red-500/30">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                </span>
+                                <span class="flex-1">
+                                    <span class="block font-bold text-base">Possível migração ou saída irregular</span>
+                                    <span class="mt-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-red-700 dark:text-red-300">
+                                        <i class="fa-solid fa-eye"></i> Leia antes de tomar qualquer medida
+                                    </span>
+                                </span>
+                                <i class="fa-solid fa-chevron-down text-red-600 dark:text-red-400 transition-transform group-open:rotate-180"></i>
+                            </summary>
+
+                            <div class="px-5 pb-5 pt-1 border-t border-red-200 dark:border-red-900/60 text-sm leading-relaxed">
+                                <p class="mt-4">Esta aba identifica Professores que também foram encontrados em grupos de outras companhias, como Treinadores, Escola de Formação de Executivos, Supervisores ou Instrutores.</p>
+                                <p class="mt-3 font-semibold">Caso algum membro apareça nesta aba, analise a situação antes de tomar qualquer medida:</p>
+
+                                <div class="mt-4 space-y-4">
+                                    <div>
+                                        <h4 class="font-bold">1. Migração de corpo sem requerimento na companhia</h4>
+                                        <p>Se o membro tiver migrado de corpo no <strong>RCCSystem</strong>, selecione <strong>Migração de corpo</strong> no card. A ferramenta preparará a saída com o motivo <strong>sem vínculo</strong>.</p>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">2. Saída já registrada corretamente</h4>
+                                        <p>Se o membro já tiver saído da companhia e tiver postado o requerimento de saída, trata-se de um <strong>falso positivo</strong>. Nesse caso, ignore o alerta.</p>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">3. Saída sem permissão</h4>
+                                        <p>Se o membro não tiver postado requerimento de saída e tiver ingressado em outra companhia, verifique a veracidade da situação. Caso seja confirmada a saída sem permissão, aplique:</p>
+                                        <ul class="mt-2 ml-5 list-disc space-y-1">
+                                            <li>Expulsão da companhia;</li>
+                                            <li>100 medalhas efetivas negativas.</li>
+                                            <li>Envio da carta de expulsão.</li>
+                                        </ul>
+                                        <p class="mt-2">A punição deverá ser aplicada conforme o <strong>Regimento Interno, Capítulo V, Art. 5º</strong>.</p>
+                                        <p class="mt-2">Selecione <strong>Saída sem permissão</strong> no card para liberar os três botões de postagem.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+
+                        <ul id="lista-outros" class="grid grid-cols-1 gap-4"></ul>
+                    </div>
+                </section>
+            </div>
+
+            <div id="content-erros" class="tab-content hidden">
+                <section class="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div class="bg-red-50 dark:bg-red-950/20 px-6 py-4 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-red-500 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-red-500/30">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                                Erros de Verificação
+                                <i class="fa-solid fa-circle-info text-xs text-red-500/60 cursor-help" title="Membros que não puderam ser verificados por falha na API ou nos proxies."></i>
+                            </h3>
+                        </div>
+                        <span id="contador-erros" class="bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-300 px-3 py-1 rounded-full text-xs font-bold border border-red-200 dark:border-red-700">0
+                            encontrados</span>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 p-4 rounded-xl mb-6 flex gap-3 text-sm">
+                            <i class="fa-solid fa-bug mt-1"></i>
+                            <p><strong>Atenção:</strong> Estes membros não puderam ser verificados porque a API do Habbo
+                                ou os proxies não responderam após múltiplas tentativas. <strong>Verifique manualmente</strong>
+                                o perfil deles no jogo ou tente rodar a verificação novamente.</p>
+                        </div>
+
+                        <ul id="lista-erros" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></ul>
+                    </div>
+                </section>
+            </div>
+
+        </div></section></div></div></main>
+
+    <footer class="fc-footer">
+        <div class="container mx-auto px-6 text-center">
+            <p class="text-slate-500 dark:text-slate-400 text-sm font-medium mb-2">Desenvolvido por <strong class="text-slate-700 dark:text-slate-200">Pegas</strong></p>
+            <p class="text-slate-400 dark:text-slate-500 text-xs">Todos os direitos reservados aos Professores.</p>
+        </div>
+    </footer>
+
+    <div id="sobreposicao-modal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0" id="fundo-modal">
+        </div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-modal" class="bg-white dark:bg-[#0f172a] w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col transform scale-95 opacity-0 transition-all duration-300">
+                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-[#1e293b]/50 rounded-t-2xl">
+                    <h3 id="titulo-modal" class="font-bold text-slate-800 dark:text-white text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-purple-500"></i>
+                        <span>Título do Modal</span>
+                    </h3>
+                    <button onclick="fecharModal()" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-rose-500 hover:text-white transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div id="conteudo-modal" class="p-6 overflow-y-auto custom-scrollbar flex-grow bg-slate-50/50 dark:bg-[#020617]/50">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-mp" class="fixed inset-0 z-[110] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0" id="fundo-modal-mp">
+        </div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-modal-mp" class="bg-white dark:bg-[#0f172a] w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col transform scale-95 opacity-0 transition-all duration-300">
+
+                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-amber-500 rounded-t-2xl">
+                    <h3 class="font-bold text-white text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-envelope"></i>
+                        <span>Enviar MP</span>
+                    </h3>
+                    <button onclick="fecharModalMP()" class="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/40 transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div id="progresso-mp-container" class="hidden px-6 pt-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Progresso do
+                            Lote</span>
+                        <span id="progresso-mp-texto" class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">0/0</span>
+                    </div>
+                    <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="progresso-mp-barra" class="bg-amber-500 h-full w-0 transition-all duration-500"></div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Destinatário</label>
+                            <input type="text" id="mp-destinatario" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm text-slate-500 cursor-not-allowed" readonly="">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Tipo
+                                de MP</label>
+                            <select id="mp-tipo" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+                                <option value="rebaixamento">Rebaixamento</option>
+                                <option value="expulsao">Expulsão</option>
+                                <option value="aviso-perfil">Aviso de irregularidade</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Motivo</label>
+                        <input type="text" id="mp-motivo" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" placeholder="Motivo do requerimento...">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Considerações</label>
+                        <textarea id="mp-consideracoes" rows="2" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" placeholder="Detalhes sobre a punição..."></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Link da
+                            Prova (Print)</label>
+                        <input type="text" id="mp-prova" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" placeholder="https://imgur.com/...">
+                    </div>
+
+                    <div class="pt-2">
+                        <button id="botao-enviar-mp" onclick="enviarMP()" class="w-full btn bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> Enviar MP
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-verificacao-postagem" class="fixed inset-0 z-[130] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0" id="fundo-verificacao-postagem"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-verificacao-postagem" class="bg-white dark:bg-[#0f172a] w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 transform scale-95 opacity-0 transition-all duration-300">
+                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-emerald-600 rounded-t-2xl">
+                    <h3 class="font-bold text-white text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Ação já Realizada</span>
+                    </h3>
+                </div>
+                <div class="p-6">
+                    <div id="conteudo-verificacao-normal">
+                        <p class="text-sm text-slate-600 dark:text-slate-400 mb-6">Esta ação já foi processada
+                            anteriormente. O que deseja fazer?</p>
+                        <div class="space-y-3">
+                            <button onclick="fecharModalVerificacao()" class="w-full btn bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-3 rounded-xl font-semibold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-eye"></i> OK! Só verificando
+                            </button>
+                            <button id="btn-verificar-link" class="w-full btn bg-blue-500 text-white py-3 rounded-xl font-semibold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-external-link"></i> Quero verificar se postou certo
+                            </button>
+                            <button onclick="exibirErroPostagem()" class="w-full btn bg-rose-500 text-white py-3 rounded-xl font-semibold hover:bg-rose-600 transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Deu erro :(
+                            </button>
+                        </div>
+                    </div>
+                    <div id="conteudo-verificacao-erro" class="hidden">
+                        <p class="text-sm text-rose-600 dark:text-rose-400 font-bold mb-2">Sinto muito pelo erro!</p>
+                        <p class="text-xs text-slate-500 mb-4">Abaixo está o código e o link para você postar
+                            manualmente:</p>
+                        <pre id="bbcode-erro-copia" class="bg-slate-50 dark:bg-[#020617] p-3 rounded-lg text-[10px] text-slate-600 dark:text-slate-400 font-mono mb-4 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 custom-scrollbar"></pre>
+                        <div class="flex gap-3">
+                            <button id="btn-copiar-erro" class="btn bg-purple-600 text-white flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-copy"></i> Copiar Código
+                            </button>
+                            <button id="btn-link-erro" class="btn bg-blue-500 text-white flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-external-link"></i> Abrir Link
+                            </button>
+                        </div>
+                        <button onclick="voltarVerificacaoNormal()" class="w-full mt-4 text-xs text-slate-500 hover:underline">Voltar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-revisao-bbcode" class="fixed inset-0 z-[120] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0" id="fundo-revisao-bbcode"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-revisao-bbcode" class="bg-white dark:bg-[#0f172a] w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 transform scale-95 opacity-0 transition-all duration-300">
+                <div id="topo-revisao-bbcode" class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-purple-600 rounded-t-2xl">
+                    <h3 class="font-bold text-white text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-eye"></i>
+                        <span id="titulo-revisao-bbcode">Revisar Postagem</span>
+                    </h3>
+                    <button onclick="fecharModalRevisaoBBCode()" class="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/40 transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <p class="text-xs text-slate-500 mb-4">Verifique se as informações abaixo estão corretas antes de
+                        postar no fórum.</p>
+                    <pre id="bbcode-revisao-conteudo" class="bg-slate-50 dark:bg-[#020617] p-4 rounded-xl text-[10px] text-slate-600 dark:text-slate-400 font-mono mb-6 overflow-y-auto max-h-64 border border-slate-200 dark:border-slate-800 custom-scrollbar"></pre>
+                    <div class="flex gap-3">
+                        <button onclick="fecharModalRevisaoBBCode()" class="btn bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 flex-1 py-3 rounded-xl font-semibold">
+                            Sair sem Postar
+                        </button>
+                        <button id="btn-confirmar-postagem" class="btn bg-purple-600 hover:bg-purple-700 text-white flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-check-double"></i> Confirmar e Postar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-confirmacao" class="fixed inset-0 z-[140] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onclick="fecharModalConfirmacao()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-[#0f172a] w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6 text-center transform scale-100 transition-all">
+                <div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-lg shadow-green-500/20">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-800 dark:text-white mb-2">Sucesso!</h3>
+                <p class="text-slate-500 dark:text-slate-400 text-sm mb-6">A ação foi postada corretamente.</p>
+                <div class="flex flex-col gap-2">
+                    <button onclick="confirmarERedirecionar()" class="btn bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20">
+                        <i class="fa-solid fa-external-link-alt mr-2"></i> Ver Tópico
+                    </button>
+                    <button onclick="fecharModalConfirmacao()" class="btn bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 w-full py-3 rounded-xl font-bold">
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-verificador" class="fixed inset-0 z-[150] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0" id="fundo-modal-verificador"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-modal-verificador" class="bg-white dark:bg-[#0f172a] w-full max-w-sm rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 transform scale-95 opacity-0 transition-all duration-300">
+
+                <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-t-xl">
+                    <h3 class="font-semibold text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-user-shield"></i>
+                        <span>Identificação do Verificador</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 mt-1 ml-6">Identifique-se e escolha o modo da consulta.</p>
+                </div>
+
+                <div class="p-5">
+                    <div class="mb-4">
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                            Seu Nickname
+                        </label>
+                        <input type="text" id="input-verificador-nick" class="w-full bg-slate-50 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all placeholder:text-slate-500" placeholder="Digite seu nick aqui..." autocomplete="off">
+                    </div>
+
+                    <div class="mb-5">
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Modo de Verificação
+                        </label>
+                        <div class="grid grid-cols-1 gap-2">
+                            <label class="relative flex items-center p-3 rounded-lg border border-purple-500 bg-purple-50/30 dark:bg-purple-500/5 cursor-pointer transition-all group has-[:checked]:border-purple-500 has-[:checked]:bg-purple-50/50 dark:has-[:checked]:bg-purple-500/10 hover:border-purple-400 border-slate-200 dark:border-slate-800" id="label-modo-rapido">
+                                <input type="radio" name="modo-verificacao" value="direto" class="hidden" checked="" onchange="atualizarEstiloModo()">
+                                <div class="flex flex-grow items-center gap-2.5">
+                                    <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0">
+                                        <i class="fa-solid fa-bolt text-sm"></i>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-sm text-slate-800 dark:text-white">Rápida</span>
+                                            <span class="text-[8px] px-1.5 py-0.5 rounded bg-amber-500 text-white font-bold uppercase tracking-tighter">Recomendado</span>
+                                        </div>
+                                        <p class="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">Consulta direta e mais rápida.</p>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border-2 border-purple-500 grid place-items-center shrink-0">
+                                        <div class="w-2.5 h-2.5 bg-purple-500 rounded-full animate-fade-in" id="dot-rapido">
+                                        </div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="relative flex items-center p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] cursor-pointer transition-all group hover:border-slate-300 dark:hover:border-slate-700" id="label-modo-estavel">
+                                <input type="radio" name="modo-verificacao" value="proxy" class="hidden" onchange="atualizarEstiloModo()">
+                                <div class="flex flex-grow items-center gap-2.5">
+                                    <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 shrink-0">
+                                        <i class="fa-solid fa-shield-halved text-sm"></i>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <span class="font-semibold text-sm text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-white transition-colors">Estável</span>
+                                        <p class="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">Usa conexões alternativas quando necessário.</p>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 grid place-items-center shrink-0">
+                                        <div class="w-2.5 h-2.5 bg-transparent rounded-full" id="dot-estavel"></div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="relative flex items-center p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] cursor-pointer transition-all group hover:border-slate-300 dark:hover:border-slate-700" id="label-modo-individual">
+                                <input type="radio" name="modo-verificacao" value="individual" class="hidden" onchange="atualizarEstiloModo()">
+                                <div class="flex flex-grow items-center gap-2.5">
+                                    <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 shrink-0">
+                                        <i class="fa-solid fa-user-clock text-sm"></i>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-sm text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-white transition-colors">Um a um</span>
+                                            <span class="text-[8px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold uppercase tracking-tighter">Mais confiável</span>
+                                        </div>
+                                        <p class="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">Consulta direta um a um; se falhar, tenta os proxies. Intervalo mínimo de 1,5 segundo.</p>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 grid place-items-center shrink-0">
+                                        <div class="w-2.5 h-2.5 bg-transparent rounded-full" id="dot-individual"></div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="fecharModalVerificador()" class="btn bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                            Cancelar
+                        </button>
+                        <button id="btn-confirmar-verificador" onclick="confirmarVerificador()" class="btn btn-primary flex-1 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            Iniciar Verificação
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-aviso-inicial" class="fixed inset-0 z-[200] hidden">
+        <div class="absolute inset-0 bg-slate-900/95 backdrop-blur-sm transition-opacity opacity-0" id="fundo-aviso-inicial">
+        </div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="painel-aviso-inicial" class="bg-white dark:bg-[#0f172a] w-full max-w-4xl rounded-2xl shadow-2xl border border-amber-500/30 transform scale-95 opacity-0 transition-all duration-300 overflow-hidden flex flex-col max-h-[90vh]">
+
+                <div class="px-8 py-6 border-b border-amber-500/20 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 flex items-center gap-5">
+                    <div class="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-amber-500/10">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 dark:text-white text-2xl leading-tight">Atenção Obrigatória
+                        </h3>
+                        <p class="text-sm text-amber-600 dark:text-amber-500 font-medium">Leia atentamente as diretrizes
+                            abaixo antes de prosseguir</p>
+                    </div>
+                </div>
+
+                <div class="p-8 overflow-y-auto custom-scrollbar">
+                    <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl p-4 mb-8 text-center">
+                        <p class="text-slate-700 dark:text-slate-200 text-lg">
+                            O site utiliza a <strong>Listagem dos Professores</strong>, que <strong class="text-amber-600 dark:text-amber-400">pode não estar atualizada</strong> em tempo
+                            real.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                        <div class="space-y-4">
+                            <h4 class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-magnifying-glass text-[8px]"></i> Verificações Necessárias
+                            </h4>
+
+                            <div class="group/item flex gap-4 p-4 rounded-xl transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/30 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-sm group-hover/item:scale-110 transition-transform">
+                                    <i class="fa-solid fa-file-contract"></i>
+                                </div>
+                                <div>
+                                    <h5 class="font-bold text-slate-800 dark:text-slate-100 mb-1 leading-tight">Consulte
+                                        os Requerimentos</h5>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                        Confirme se há saídas, rebaixamentos ou <strong>novos membros</strong> que podem
+                                        aparecer incorretamente para remoção.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="group/item flex gap-4 p-4 rounded-xl transition-all border border-transparent hover:border-rose-100 dark:hover:border-rose-900/30 hover:bg-rose-50/30 dark:hover:bg-rose-900/10">
+                                <div class="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 shadow-sm group-hover/item:scale-110 transition-transform">
+                                    <i class="fa-solid fa-bug"></i>
+                                </div>
+                                <div>
+                                    <h5 class="font-bold text-slate-800 dark:text-slate-100 mb-1 leading-tight">Cuidado
+                                        com Falsos Positivos</h5>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                        Verifique a situação real no <strong>Jogo</strong> e nos <strong>Relatórios de
+                                            Graduação</strong> antes de agir.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h4 class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-gavel text-[8px]"></i> Ações e Consequências
+                            </h4>
+
+                            <div class="group/item flex gap-4 p-4 rounded-xl transition-all border border-transparent hover:border-emerald-100 dark:hover:border-emerald-900/30 hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm group-hover/item:scale-110 transition-transform">
+                                    <i class="fa-solid fa-heart-crack"></i>
+                                </div>
+                                <div>
+                                    <h5 class="font-bold text-slate-800 dark:text-slate-100 mb-1 leading-tight">Evite
+                                        Injustiças</h5>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                        Evite expulsões ou rebaixamentos duplicados/incorretos para não desmotivarmos as
+                                        pessoas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="group/item flex gap-4 p-4 rounded-xl transition-all border border-transparent hover:border-amber-100 dark:hover:border-amber-900/30 hover:bg-amber-50/30 dark:hover:bg-amber-900/10">
+                                <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 shadow-sm group-hover/item:scale-110 transition-transform">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                </div>
+                                <div>
+                                    <h5 class="font-bold text-slate-800 dark:text-slate-100 mb-1 leading-tight">
+                                        Responsabilidade</h5>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                        Deixar de registrar punições solicitadas ou fazê-lo incorretamente é passível de
+                                        advertência interna.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-10">
+                        <div class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5 relative overflow-hidden group">
+                            <div class="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 -mr-10 -mt-10 rounded-full blur-2xl transition-all group-hover:bg-blue-500/10">
+                            </div>
+                            <div class="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10 group-hover:rotate-12 transition-transform duration-500">
+                                <i class="fa-solid fa-bullhorn text-2xl"></i>
+                            </div>
+                            <div class="text-center md:text-left">
+                                <h5 class="font-black text-slate-800 dark:text-white text-base mb-1 mb-0.5">Encontrou
+                                    algo estranho?</h5>
+                                <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-md">
+                                    Relate imediatamente à <strong>Liderança</strong> ou ao
+                                    <strong>Desenvolvedor</strong> caso identifique qualquer comportamento inesperado ou
+                                    bug no sistema.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-8 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                    <button onclick="fecharModalAvisoInicial()" class="w-full btn btn-primary py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all duration-500 hover:-translate-y-1 active:scale-[0.98]">
+                        <i class="fa-solid fa-check-double mr-3"></i> TUDO CERTO, VAMOS LÁ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Visualização de Membros Importados do Fórum -->
+    <div id="modal-membros-forum" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-membros-forum">
+        <div class="card-standard max-w-2xl w-full rounded-2xl shadow-2xl border border-slate-200/80 dark:border-purple-500/30 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 overflow-hidden flex flex-col max-h-[85vh]">
+            <!-- Cabeçalho -->
+            <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/40">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-users-viewfinder"></i>
+                    </div>
+                    <div>
+                        <h3 id="titulo-modal-membros-forum" class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            Membros Importados do Fórum
+                            <span id="modal-badge-total" class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-mono">0</span>
+                        </h3>
+                        <p id="modal-status-origem" class="text-xs text-slate-500 dark:text-slate-400">
+                            Visualização dos membros reconhecidos nos 3 subfóruns
+                        </p>
+                    </div>
+                </div>
+                <button type="button" id="btn-fechar-modal-membros" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors" aria-label="Fechar modal">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Toolbar e Abas -->
+            <div class="p-4 border-b border-slate-200 dark:border-slate-800/80 bg-slate-100/50 dark:bg-slate-950/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="relative w-full sm:w-64">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
+                    <input type="text" id="filtro-membros-modal" placeholder="Filtrar por nick..." class="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-purple-500 transition-all">
+                </div>
+
+                <!-- Abas por Grupo -->
+                <div class="flex items-center gap-1 bg-slate-200/70 dark:bg-slate-800/80 p-1 rounded-xl w-full sm:w-auto justify-center overflow-x-auto">
+                    <button type="button" data-aba-grupo="todos" class="tab-grupo-btn px-3 py-1 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white shadow-sm">
+                        Todos <span id="aba-cont-todos" class="text-[10px] opacity-80">(0)</span>
+                    </button>
+                    <button type="button" data-aba-grupo="professores" class="tab-grupo-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all">
+                        Professores <span id="aba-cont-professores" class="text-[10px] opacity-80">(0)</span>
+                    </button>
+                    <button type="button" data-aba-grupo="coordenadores" class="tab-grupo-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all">
+                        Coordenadores <span id="aba-cont-coordenadores" class="text-[10px] opacity-80">(0)</span>
+                    </button>
+                    <button type="button" data-aba-grupo="graduadores" class="tab-grupo-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all">
+                        Graduadores <span id="aba-cont-graduadores" class="text-[10px] opacity-80">(0)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Listagem de Nicks -->
+            <div id="modal-lista-membros-conteudo" class="p-5 overflow-y-auto custom-scrollbar flex-grow space-y-2 min-h-[220px] max-h-[50vh]">
+                <!-- Preenchido dinamicamente -->
+            </div>
+
+            <!-- Rodapé -->
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button type="button" id="btn-re-sincronizar-modal" class="text-xs text-purple-600 dark:text-purple-400 hover:underline font-bold flex items-center gap-1.5 self-start sm:self-center">
+                    <i class="fa-solid fa-rotate"></i> Consultar e atualizar do fórum agora
+                </button>
+                <div class="flex items-center gap-2 self-end sm:self-center">
+                    <button type="button" id="btn-copiar-todos-modal" class="px-3.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all">
+                        <i class="fa-regular fa-copy"></i> Copiar Nicks
+                    </button>
+                    <button type="button" id="btn-fechar-modal-rodape" class="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white transition-all">
+                        Concluído
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed top-24 right-6 z-[100] flex flex-col gap-4 pointer-events-none"></div>
+
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[90] hidden flex-col items-center justify-center transition-all duration-300">
+        <div class="relative">
+            <div class="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <i class="fa-solid fa-cloud-arrow-down text-indigo-400 text-xl animate-pulse"></i>
+            </div>
+        </div>
+        <h3 class="mt-6 text-xl font-bold text-white tracking-tight">Restaurando Sessão</h3>
+        <p class="text-indigo-200 text-sm mt-2">Aplicando dados do histórico...</p>
+    </div>
+
+    
+    
+    
+    
+
+
+<dialog id="fc-send-status" class="fc-send-dialog"><header><h2>Andamento do envio</h2><button type="button" id="fc-close-status" aria-label="Fechar">×</button></header><div id="fc-history-list"></div></dialog></body></html>
