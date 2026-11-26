@@ -336,16 +336,16 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
     nav.after(button);
     const section = document.createElement('section');
     section.id = 'view-advertencias'; section.className = 'view'; section.hidden = true;
-    section.innerHTML = '<header class="hero"><div><p class="eyebrow">Auditoria · punições</p><h1>Advertências por função</h1><p>Professores e cargos superiores com duas ou mais advertências escritas vigentes por não cumprimento de função. Confira os registros antes de qualquer medida.</p></div><div class="hero-chip"><i class="ti ti-file-alert" aria-hidden="true"></i><span><small>Casos identificados</small><strong id="written-warnings-count">0 membros</strong></span></div></header><section class="panel"><header class="panel-header"><div><p class="eyebrow">Conferência automática</p><h2>Duas advertências escritas</h2></div></header><div id="written-warnings-grid" class="accumulation-grid"></div></section>';
+    section.innerHTML = '<header class="hero"><div><p class="eyebrow">Auditoria · punições</p><h1>Advertências por função</h1><p>Professores e cargos superiores com duas ou mais advertências escritas vigentes por não cumprimento da meta semanal como Professor(a), Coordenador(a) ou Graduador(a). Confira os registros antes de qualquer medida.</p></div><div class="hero-chip"><i class="ti ti-file-alert" aria-hidden="true"></i><span><small>Casos identificados</small><strong id="written-warnings-count">0 membros</strong></span></div></header><section class="panel"><header class="panel-header"><div><p class="eyebrow">Conferência automática</p><h2>Duas advertências escritas</h2></div></header><div id="written-warnings-grid" class="accumulation-grid"></div></section>';
     audit.before(section);
   }
 
   function isWrittenFunctionWarning(record) {
     const punishment = low(record.punicao || record.tipo_ocorrencia || record.tipo);
-    const reason = low([record.motivo, record.observacao, record.punicao].filter(Boolean).join(' '));
+    const reason = low(record.motivo);
     return activeDecision(record)
       && /advertencia (escrita|interna)/.test(punishment)
-      && /nao cumprimento (?:de|da|das|de suas?) (?:sua[s]? )?fun(?:cao|coes)/.test(reason);
+      && /^nao cumprimento da meta semanal como (?:professor|coordenador|graduador)(?:\(a\))?\.?$/.test(reason);
   }
 
   function renderWrittenWarnings() {
@@ -369,7 +369,7 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
       .sort((a,b) => b.records.length - a.records.length || a.nick.localeCompare(b.nick, 'pt-BR'));
     $('written-warnings-nav-count').textContent = cases.length;
     $('written-warnings-count').textContent = `${cases.length} membro${cases.length === 1 ? '' : 's'}`;
-    grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento de função</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera membros ativos, advertências vigentes e o motivo não cumprimento de função.</p></div>';
+    grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento da meta semanal</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera membros ativos, advertências vigentes e os motivos de meta semanal dos três cargos.</p></div>';
     grid.querySelectorAll('[data-warning-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.warningRecord); });
   }
 
