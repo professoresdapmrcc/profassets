@@ -326,18 +326,30 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
     document.querySelectorAll('[data-open-accumulation]').forEach(button => button.onclick = () => openAccumulation(button.dataset.openAccumulation));
   }
 
+  function selectAuditTab(tab) {
+    const warnings = tab === 'advertencias';
+    document.querySelectorAll('#view-auditoria > .audit-original-section').forEach(element => { element.hidden = warnings; });
+    $('audit-warnings-section').hidden = !warnings;
+    document.querySelectorAll('[data-audit-tab]').forEach(button => {
+      const active = button.dataset.auditTab === tab;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+  }
+
   function installWrittenWarningsView() {
-    const nav = document.querySelector('.sidebar-nav [data-view="acumulos"]');
     const audit = $('view-auditoria');
-    if (!nav || !audit || $('view-advertencias')) return;
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'nav-item'; button.dataset.view = 'advertencias';
-    button.innerHTML = '<i class="ti ti-file-alert" aria-hidden="true"></i><span>Advertências por função</span><b id="written-warnings-nav-count" class="nav-count warning-count">0</b>';
-    nav.after(button);
+    if (!audit || $('audit-warnings-section')) return;
+    [...audit.children].forEach(element => element.classList.add('audit-original-section'));
+    const tabs = document.createElement('div');
+    tabs.className = 'audit-section-tabs'; tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Consultas da auditoria');
+    tabs.innerHTML = '<button type="button" role="tab" class="active" aria-selected="true" data-audit-tab="divergencias">Divergências cadastrais</button><button type="button" role="tab" aria-selected="false" data-audit-tab="advertencias">Advertências por meta <b id="written-warnings-tab-count">0</b></button>';
+    audit.prepend(tabs);
     const section = document.createElement('section');
-    section.id = 'view-advertencias'; section.className = 'view'; section.hidden = true;
+    section.id = 'audit-warnings-section'; section.className = 'audit-warnings-section'; section.hidden = true;
     section.innerHTML = '<header class="hero"><div><p class="eyebrow">Auditoria · punições</p><h1>Advertências por função</h1><p>Professores e cargos superiores com duas ou mais advertências escritas vigentes por não cumprimento da meta semanal como Professor(a), Coordenador(a) ou Graduador(a). Confira os registros antes de qualquer medida.</p></div><div class="hero-chip"><i class="ti ti-file-alert" aria-hidden="true"></i><span><small>Casos identificados</small><strong id="written-warnings-count">0 membros</strong></span></div></header><section class="panel"><header class="panel-header"><div><p class="eyebrow">Conferência automática</p><h2>Duas advertências escritas</h2></div></header><div id="written-warnings-grid" class="accumulation-grid"></div></section>';
-    audit.before(section);
+    audit.append(section);
+    tabs.querySelectorAll('[data-audit-tab]').forEach(button => { button.onclick = () => selectAuditTab(button.dataset.auditTab); });
   }
 
   function isWrittenFunctionWarning(record) {
@@ -367,7 +379,7 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
     });
     const cases = [...groups.values()].filter(group => group.records.length >= 2)
       .sort((a,b) => b.records.length - a.records.length || a.nick.localeCompare(b.nick, 'pt-BR'));
-    $('written-warnings-nav-count').textContent = cases.length;
+    $('written-warnings-tab-count').textContent = cases.length;
     $('written-warnings-count').textContent = `${cases.length} membro${cases.length === 1 ? '' : 's'}`;
     grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento da meta semanal</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera membros ativos, advertências vigentes e os motivos de meta semanal dos três cargos.</p></div>';
     grid.querySelectorAll('[data-warning-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.warningRecord); });
@@ -849,11 +861,14 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
     }, error => { console.error(error); toast(`Falha ao carregar os registros: ${error.message}`, 'error'); });
   }
   function navigate(view) {
-    if (!['ativos','novo','acumulos','advertencias','auditoria','historico','finalizacao','configuracoes'].includes(view)) view = 'ativos';
+    const oldWarningsLink = view === 'advertencias';
+    if (oldWarningsLink) view = 'auditoria';
+    if (!['ativos','novo','acumulos','auditoria','historico','finalizacao','configuracoes'].includes(view)) view = 'ativos';
     document.querySelectorAll('.view').forEach(element => { element.hidden = element.id !== `view-${view}`; });
     document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', advertencias:'Advertências por função', auditoria:'Auditoria Nexus', historico:'Histórico', finalizacao:'Finalizar quadro', configuracoes:'Configurações' };
+    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', auditoria:'Auditoria Nexus', historico:'Histórico', finalizacao:'Finalizar quadro', configuracoes:'Configurações' };
     $('page-label').textContent = labels[view] || labels.ativos; $('sidebar').classList.remove('open'); location.hash = view;
+    if (view === 'auditoria') selectAuditTab(oldWarningsLink ? 'advertencias' : 'divergencias');
   }
   function bind() {
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => navigate(button.dataset.view));
