@@ -363,25 +363,19 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
   function renderWrittenWarnings() {
     const grid = $('written-warnings-grid');
     if (!grid) return;
-    const activeMembers = new Map();
-    (state.nexusReference?.membros_ativos || []).forEach(member => {
-      const key = auditNick(member.nick || member.nome || member.name);
-      if (key) activeMembers.set(key, member);
-    });
     const groups = new Map();
     state.records.filter(isWrittenFunctionWarning).forEach(record => {
       const key = auditNick(record.nick);
-      const member = activeMembers.get(key);
-      const cargo = clean(member?.cargo || member?.cargo_atual || member?.funcao);
-      if (!key || !member || !AVAILABLE_ROLES.some(role => roleMatches(cargo, role))) return;
-      if (!groups.has(key)) groups.set(key, { nick:clean(member.nick || member.nome || member.name), cargo, records:[] });
+      const cargo = clean(record.cargo);
+      if (!key || !AVAILABLE_ROLES.some(role => roleMatches(cargo, role))) return;
+      if (!groups.has(key)) groups.set(key, { nick:clean(record.nick), cargo, records:[] });
       groups.get(key).records.push(record);
     });
     const cases = [...groups.values()].filter(group => group.records.length >= 2)
       .sort((a,b) => b.records.length - a.records.length || a.nick.localeCompare(b.nick, 'pt-BR'));
     $('written-warnings-tab-count').textContent = cases.length;
     $('written-warnings-count').textContent = `${cases.length} membro${cases.length === 1 ? '' : 's'}`;
-    grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento da meta semanal</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera membros ativos, advertências vigentes e os motivos de meta semanal dos três cargos.</p></div>';
+    grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento da meta semanal</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera advertências vigentes e os motivos de meta semanal dos três cargos.</p></div>';
     grid.querySelectorAll('[data-warning-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.warningRecord); });
   }
 
@@ -411,6 +405,7 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
 
   async function runAudit() {
     if (state.busy || !state.db) return;
+    renderWrittenWarnings();
     const button = $('run-audit-button'); state.busy = true; setBusy(button, true, 'Comparando…');
     try {
       const reference = await loadNexusReference();
