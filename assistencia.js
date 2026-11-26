@@ -326,6 +326,53 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
     document.querySelectorAll('[data-open-accumulation]').forEach(button => button.onclick = () => openAccumulation(button.dataset.openAccumulation));
   }
 
+  function installWrittenWarningsView() {
+    const nav = document.querySelector('.sidebar-nav [data-view="acumulos"]');
+    const audit = $('view-auditoria');
+    if (!nav || !audit || $('view-advertencias')) return;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'nav-item'; button.dataset.view = 'advertencias';
+    button.innerHTML = '<i class="ti ti-file-alert" aria-hidden="true"></i><span>Advertências por função</span><b id="written-warnings-nav-count" class="nav-count warning-count">0</b>';
+    nav.after(button);
+    const section = document.createElement('section');
+    section.id = 'view-advertencias'; section.className = 'view'; section.hidden = true;
+    section.innerHTML = '<header class="hero"><div><p class="eyebrow">Auditoria · punições</p><h1>Advertências por função</h1><p>Professores e cargos superiores com duas ou mais advertências escritas vigentes por não cumprimento de função. Confira os registros antes de qualquer medida.</p></div><div class="hero-chip"><i class="ti ti-file-alert" aria-hidden="true"></i><span><small>Casos identificados</small><strong id="written-warnings-count">0 membros</strong></span></div></header><section class="panel"><header class="panel-header"><div><p class="eyebrow">Conferência automática</p><h2>Duas advertências escritas</h2></div></header><div id="written-warnings-grid" class="accumulation-grid"></div></section>';
+    audit.before(section);
+  }
+
+  function isWrittenFunctionWarning(record) {
+    const punishment = low(record.punicao || record.tipo_ocorrencia || record.tipo);
+    const reason = low([record.motivo, record.observacao, record.punicao].filter(Boolean).join(' '));
+    return activeDecision(record)
+      && /advertencia (escrita|interna)/.test(punishment)
+      && /nao cumprimento (?:de|da|das|de suas?) (?:sua[s]? )?fun(?:cao|coes)/.test(reason);
+  }
+
+  function renderWrittenWarnings() {
+    const grid = $('written-warnings-grid');
+    if (!grid) return;
+    const activeMembers = new Map();
+    (state.nexusReference?.membros_ativos || []).forEach(member => {
+      const key = auditNick(member.nick || member.nome || member.name);
+      if (key) activeMembers.set(key, member);
+    });
+    const groups = new Map();
+    state.records.filter(isWrittenFunctionWarning).forEach(record => {
+      const key = auditNick(record.nick);
+      const member = activeMembers.get(key);
+      const cargo = clean(member?.cargo || member?.cargo_atual || member?.funcao);
+      if (!key || !member || !AVAILABLE_ROLES.some(role => roleMatches(cargo, role))) return;
+      if (!groups.has(key)) groups.set(key, { nick:clean(member.nick || member.nome || member.name), cargo, records:[] });
+      groups.get(key).records.push(record);
+    });
+    const cases = [...groups.values()].filter(group => group.records.length >= 2)
+      .sort((a,b) => b.records.length - a.records.length || a.nick.localeCompare(b.nick, 'pt-BR'));
+    $('written-warnings-nav-count').textContent = cases.length;
+    $('written-warnings-count').textContent = `${cases.length} membro${cases.length === 1 ? '' : 's'}`;
+    grid.innerHTML = cases.length ? cases.map(group => `<article class="accumulation-card internal"><div class="accumulation-head"><div class="person"><img src="${forumAvatar(group.nick)}" alt=""><div><strong>${esc(group.nick)}</strong><small>${esc(group.cargo)}</small></div></div><span class="type-badge">${group.records.length} advertências</span></div><h3 class="accumulation-title">Não cumprimento de função</h3><p class="accumulation-reason">Registros vigentes para conferência</p><div class="source-mini-list">${group.records.sort((a,b) => bestHistoryMillis(b) - bestHistoryMillis(a)).map(record => `<span><b>${esc(record.punicao || 'Advertência escrita')}</b><small>${esc(recordDate(record))}</small><button class="secondary-button compact-button" type="button" data-warning-record="${esc(record.id)}">Abrir</button></span>`).join('')}</div></article>`).join('') : '<div class="empty"><i class="ti ti-shield-check"></i><h3>Nenhum caso identificado</h3><p>A consulta considera membros ativos, advertências vigentes e o motivo não cumprimento de função.</p></div>';
+    grid.querySelectorAll('[data-warning-record]').forEach(button => { button.onclick = () => openRecordEditor(button.dataset.warningRecord); });
+  }
+
   function auditNick(value) {
     return low(value).replace(/^(sr|sra)\.?\s*/i, '').replace(/[^a-z0-9:]/g, '');
   }
@@ -797,15 +844,15 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
   function subscribeRecords() {
     if (state.unsubscribe) state.unsubscribe();
     state.unsubscribe = state.db.collection(RECORDS).onSnapshot(snapshot => {
-      state.records = snapshot.docs.map(doc => ({ id:doc.id, ...doc.data() })); renderActive(); renderHistory();
+      state.records = snapshot.docs.map(doc => ({ id:doc.id, ...doc.data() })); renderActive(); renderHistory(); renderWrittenWarnings();
       syncAutomaticDeadlines(state.records);
     }, error => { console.error(error); toast(`Falha ao carregar os registros: ${error.message}`, 'error'); });
   }
   function navigate(view) {
-    if (!['ativos','novo','acumulos','auditoria','historico','finalizacao','configuracoes'].includes(view)) view = 'ativos';
+    if (!['ativos','novo','acumulos','advertencias','auditoria','historico','finalizacao','configuracoes'].includes(view)) view = 'ativos';
     document.querySelectorAll('.view').forEach(element => { element.hidden = element.id !== `view-${view}`; });
     document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', auditoria:'Auditoria Nexus', historico:'Histórico', finalizacao:'Finalizar quadro', configuracoes:'Configurações' };
+    const labels = { ativos:'Registros ativos', novo:'Novo registro', acumulos:'Análise de acúmulos', advertencias:'Advertências por função', auditoria:'Auditoria Nexus', historico:'Histórico', finalizacao:'Finalizar quadro', configuracoes:'Configurações' };
     $('page-label').textContent = labels[view] || labels.ativos; $('sidebar').classList.remove('open'); location.hash = view;
   }
   function bind() {
@@ -834,6 +881,7 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
   }
 
   async function init() {
+    installWrittenWarningsView();
     bind(); renderRecommendations(); renderAudit();
     const theme = localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; $('theme-button').innerHTML = `<i class="ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'}"></i>`;
     $('manual-date').value = todayIso();
@@ -843,6 +891,7 @@ Em caso de dúvidas ou erros consulte um conselheiro+.
       state.auth = firebase.auth(); state.db = firebase.firestore();
       if (!state.auth.currentUser) await state.auth.signInAnonymously();
       await loadNexusReference();
+      renderWrittenWarnings();
       await loadSettings();
       state.profile = await findProfile(state.nick);
       if (!state.profile) return deny('Acesso não localizado', `O nickname ${state.nick} não foi encontrado no cadastro de membros.`);
